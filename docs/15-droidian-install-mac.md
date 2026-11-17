@@ -33,3 +33,6 @@ Boot OrangeFox (releases/recovery/orangefox), `adb sideload` releases/a16-latest
 - Whether `fastboot flash super` of a sparse super.img works from bootloader fastboot on this Oplus abl (it should; super is a normal GPT partition). If it refuses, report the exact error.
 - Droidian initrd resize2fs on first boot expands userdata to ~225 GB (takes a while on first boot).
 - SELinux is disabled by cmdline; no AppArmor in this kernel.
+
+## Troubleshooting: `fastboot boot boot.img` -> `FAILED (usb_write failed with status e00002ed)` (user report)
+0xe00002ed = macOS IOKit kIOReturnNotResponding (USB transfer stalled). Our earlier working RAM image (debug-boot.img) was 59 MB; boot.img is 77 MB (raw 58 MB kernel + 17 MB initramfs). Hypothesis: size/transport. Built `boot-gz.img` (41 MB, gzip kernel, sha256 5376097893739b931b2f7eb0da973f91b776eca43ba5a9c11da7cd4cf2bfa471) — try it first. Also: direct port (no hub), another cable, verify `shasum -a 256`, phone in bootloader fastboot (not fastbootd), retry.
