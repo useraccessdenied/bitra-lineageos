@@ -1,0 +1,12 @@
+diff --git a/camera-vendor.mk b/camera-vendor.mk
+index 633d11d..1b5451f 100644
+--- a/camera-vendor.mk
++++ b/camera-vendor.mk
+@@ -488,7 +488,6 @@ PRODUCT_PACKAGES += \
+     libst_mobile \
+     libst_sticker_jni \
+     OplusAppPlatform \
+-    OplusCamera \
+     oplus-support-wrapper \
+     com.oplus.camera.unit.sdk.adapter \
+     com.oplus.camera.unit.sdk

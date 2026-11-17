@@ -1,0 +1,74 @@
+diff --git a/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java b/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
+index c906e6594..bba8a3a79 100644
+--- a/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
++++ b/packages/SystemUI/src/com/android/systemui/biometrics/UdfpsController.java
+@@ -253,10 +253,26 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+ 
+     public static final int LONG_PRESS = HapticFeedbackConstants.LONG_PRESS;
+ 
++    // bitra: the optical-FOD dim layer asserts panel HBM as soon as the UDFPS overlay is added.
++    // When the overlay is added while the screen is still on but going to sleep, the panel flashes
++    // bright for ~0.5s. Defer showing it until the screen has actually turned off.
++    private boolean mGoingToSleep;
++    @Nullable private UdfpsControllerOverlay mPendingSleepOverlay;
++
++    private void showPendingSleepOverlay() {
++        final UdfpsControllerOverlay pending = mPendingSleepOverlay;
++        mPendingSleepOverlay = null;
++        if (pending != null) {
++            showUdfpsOverlay(pending);
++        }
++    }
++
+     private final ScreenLifecycle.Observer mScreenObserver = new ScreenLifecycle.Observer() {
+         @Override
+         public void onScreenTurnedOn() {
+             mScreenOn = true;
++            mGoingToSleep = false;
++            showPendingSleepOverlay();
+             if (mAodInterruptRunnable != null) {
+                 mAodInterruptRunnable.run();
+                 mAodInterruptRunnable = null;
+@@ -266,14 +282,21 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+         @Override
+         public void onScreenTurnedOff() {
+             mScreenOn = false;
++            showPendingSleepOverlay();
+         }
+     };
+ 
+     private final WakefulnessLifecycle mWakefulnessLifecycle;
+     private final WakefulnessLifecycle.Observer mWakefulnessLifecycleObserver =
+             new WakefulnessLifecycle.Observer() {
++                @Override
++                public void onStartedWakingUp() {
++                    mGoingToSleep = false;
++                }
++
+                 @Override
+                 public void onStartedGoingToSleep() {
++                    mGoingToSleep = true;
+                     mLatencyTracker.onActionCancel(
+                             ACTION_UDFPS_OVERLAY_ATTACHED_AFTER_GOING_TO_SLEEP);
+                     mLatencyTracker.onActionStart(
+@@ -858,6 +881,12 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+             return;
+         }
+ 
++        if (overlay.getRequestReason() == REASON_AUTH_KEYGUARD && mGoingToSleep && mScreenOn) {
++            Log.d(TAG, "showUdfpsOverlay | going to sleep, deferring until screen off");
++            mPendingSleepOverlay = overlay;
++            return;
++        }
++
+         mOverlay = overlay;
+         final int requestReason = overlay.getRequestReason();
+         if (requestReason == REASON_AUTH_KEYGUARD
+@@ -884,6 +913,7 @@ public class UdfpsController implements DozeReceiver, Dumpable {
+ 
+     private void hideUdfpsOverlay() {
+         mExecution.assertIsMainThread();
++        mPendingSleepOverlay = null;
+ 
+         if (mOverlay != null) {
+             // Reset the controller back to its starting state.

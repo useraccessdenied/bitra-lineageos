@@ -1,0 +1,67 @@
+diff --git a/Android.bp b/Android.bp
+index f27fcfb..727a941 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -18173,8 +18173,8 @@ cc_prebuilt_library_shared {
+             shared_libs: [
+                 "libbinder_ndk",
+                 "android.hardware.biometrics.common-V1-ndk_platform",
+-                "android.hardware.common-V2-ndk_platform",
+-                "android.hardware.keymaster-V3-ndk_platform",
++                "android.hardware.common-V2-ndk",
++                "android.hardware.keymaster-V3-ndk",
+                 "libc++",
+                 "libc",
+                 "libm",
+@@ -24162,15 +24162,6 @@ prebuilt_etc_xml {
+     device_specific: true,
+ }
+ 
+-prebuilt_etc_xml {
+-    name: "manifest_oplus_face.xml",
+-    owner: "realme",
+-    src: "proprietary/odm/etc/vintf/manifest/manifest_oplus_face.xml",
+-    filename_from_src: true,
+-    sub_dir: "vintf/manifest",
+-    device_specific: true,
+-}
+-
+ prebuilt_etc_xml {
+     name: "manifest_oplus_fingerprint.xml",
+     owner: "realme",
+diff --git a/sm8250-common-vendor.mk b/sm8250-common-vendor.mk
+index 89d6bdc..8b80164 100644
+--- a/sm8250-common-vendor.mk
++++ b/sm8250-common-vendor.mk
+@@ -28,7 +28,6 @@ PRODUCT_COPY_FILES += \
+     vendor/realme/sm8250-common/proprietary/odm/etc/camera/settings_fdc_lite.txt:$(TARGET_COPY_OUT_ODM)/etc/camera/settings_fdc_lite.txt \
+     vendor/realme/sm8250-common/proprietary/odm/etc/camera/wide.bin:$(TARGET_COPY_OUT_ODM)/etc/camera/wide.bin \
+     vendor/realme/sm8250-common/proprietary/odm/etc/init/android.hardware.drm@1.3-service.widevine.rc:$(TARGET_COPY_OUT_ODM)/etc/init/android.hardware.drm@1.3-service.widevine.rc \
+-    vendor/realme/sm8250-common/proprietary/odm/etc/init/vendor.oplus.hardware.biometrics.face@1.0-service.rc:$(TARGET_COPY_OUT_ODM)/etc/init/vendor.oplus.hardware.biometrics.face@1.0-service.rc \
+     vendor/realme/sm8250-common/proprietary/odm/etc/init/vendor.oplus.hardware.biometrics.fingerprint@2.1-service.rc:$(TARGET_COPY_OUT_ODM)/etc/init/vendor.oplus.hardware.biometrics.fingerprint@2.1-service.rc \
+     vendor/realme/sm8250-common/proprietary/odm/etc/init/vendor.oplus.hardware.oplusSensor@1.0-service.rc:$(TARGET_COPY_OUT_ODM)/etc/init/vendor.oplus.hardware.oplusSensor@1.0-service.rc \
+     vendor/realme/sm8250-common/proprietary/odm/etc/init/vendor.qti.esepowermanager@1.1-service.rc:$(TARGET_COPY_OUT_ODM)/etc/init/vendor.qti.esepowermanager@1.1-service.rc \
+@@ -943,7 +942,6 @@ PRODUCT_PACKAGES += \
+     anc.capacitive.hal \
+     anc.hal \
+     android.hardware.biometrics.common-V1-ndk_platform \
+-    android.hardware.biometrics.face-V1-ndk_platform \
+     android.hardware.secure_element@1.0-impl \
+     com.oplus.node.aiaftrack \
+     com.oplus.node.drawafinfo \
+@@ -1208,7 +1206,6 @@ PRODUCT_PACKAGES += \
+     vendor.qti.gnss@4.0-service.xml \
+     manifest_android.hardware.drm@1.3-service.widevine.xml \
+     manifest_oplusSensor.xml \
+-    manifest_oplus_face.xml \
+     manifest_oplus_fingerprint.xml \
+     adpl \
+     adsprpcd \
+@@ -1279,7 +1276,6 @@ PRODUCT_PACKAGES += \
+     tcmd \
+     wfdservice \
+     android.hardware.drm@1.3-service.widevine \
+-    vendor.oplus.hardware.biometrics.face@1.0-service \
+     vendor.oplus.hardware.biometrics.fingerprint@2.1-service \
+     vendor.oplus.hardware.oplusSensor@1.0-service \
+     vendor.qti.esepowermanager@1.1-service \

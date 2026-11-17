@@ -1,0 +1,11 @@
+# whitelist: only docs/scripts/manifests/patches are tracked; never blobs, ROM trees, firmware, logs, backups
+/*
+!/.gitignore
+!/README.md
+!/ATTRIBUTION.md
+!/AI_DISCLOSURE.md
+!/docs/
+!/scripts/
+!/manifests/
+!/patches/
+__pycache__/

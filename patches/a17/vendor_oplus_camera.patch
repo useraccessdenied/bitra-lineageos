@@ -1,0 +1,23 @@
+diff --git a/camera-vendor.mk b/camera-vendor.mk
+index 633d11d..1b5451f 100644
+--- a/camera-vendor.mk
++++ b/camera-vendor.mk
+@@ -488,7 +488,6 @@ PRODUCT_PACKAGES += \
+     libst_mobile \
+     libst_sticker_jni \
+     OplusAppPlatform \
+-    OplusCamera \
+     oplus-support-wrapper \
+     com.oplus.camera.unit.sdk.adapter \
+     com.oplus.camera.unit.sdk
+diff --git a/sepolicy/private/opluscamera_app.te b/sepolicy/private/opluscamera_app.te
+new file mode 100644
+index 0000000..d70520f
+--- /dev/null
++++ b/sepolicy/private/opluscamera_app.te
+@@ -0,0 +1,5 @@
++# bitra (Android 17): OplusCamera is a platform (system_ext) app but its domain also carries vendor
++# rules, which Treble labeling (BOARD_API_LEVEL >= 202604) rejects. Exempt it on userdebug/eng builds.
++userdebug_or_eng(`
++  typeattribute opluscamera_app treble_labeling_violators;
++')

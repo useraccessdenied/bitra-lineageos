@@ -1,0 +1,13 @@
+diff --git a/scripts/check_boot_jars/package_allowed_list.txt b/scripts/check_boot_jars/package_allowed_list.txt
+index 335d29c..2f1faee 100644
+--- a/scripts/check_boot_jars/package_allowed_list.txt
++++ b/scripts/check_boot_jars/package_allowed_list.txt
+@@ -231,6 +231,8 @@ com\.nothing\..*
+ 
+ # OPLUS adds
+ com\.oplus\..*
++net\.oneplus\.odm
++oplus\.content\.res
+ 
+ # QC adds
+ com.qualcomm.qti
