@@ -162,3 +162,4 @@
 ## 2026-11-17 — A16 and A17 verified by user; Droidian stage 0
 - User: A16 + A17 both work (root, ReSukiSU manager, Droidspaces, HBM fix, battery good). Starting Droidian.
 - Recon summary in docs/11-droidian-estimate.md. Blocker: need stock Android 13 vendor (full RUI 4.0 OTA); Droidian caps at Android 13; Docker-based tooling replaced with host-native.
+- Droidian: stock A13 package found in firmware/EDL; vendor (API30/Android12-level Treble vendor) + boot extracted to firmware/stock-a13/. See docs/11.

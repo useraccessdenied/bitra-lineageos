@@ -49,3 +49,11 @@ github.com/orgs/droidian-devices/repositories (53 repos). Subagent report; claim
 1. Obtain full stock RUI 4.0 (Android 13) RMX3370 OTA (IN/EU/GLOBAL) -> extract vendor/odm/boot/dtbo/vbmeta (scripts/unpack_blockota.py handles block OTAs).
 2. Draft Halium/Droidian kernel fragment from the bitra .config (missing list in this doc) and build it host-native.
 3. First test without flashing partitions: `fastboot boot` of a halium-boot image (RAM only). Needs user go-ahead per step.
+
+### Correction (2026-11-17): the full stock Android 13 package IS already in firmware/EDL
+`firmware/EDL/RMX3370export_11_13.1.0.1100EX01_2024101810120100.zip` (RUI 13.1.0.1100 EX01, 2024-10) holds IMAGES/{system,system_ext,vendor,odm,boot,recovery,dtbo,vbmeta*}.img. I missed it in the first recon.
+Extracted (python zipfile, untrusted) to firmware/stock-a13/: boot, dtbo, vbmeta, vbmeta_system, vbmeta_vendor, vendor, odm, recovery (+ simg2img raw vendor.raw / odm.raw, vendor tree in v-extract/vendor).
+- vendor.img: sparse EROFS; props: ro.vendor.build.version.release=12, sdk=30, fingerprint qti/kona/kona:12/RKQ1.211119.001, first_api_level 30 => a **Treble vendor of Android 12 level (API 30)** under an Android 13 system. => Droidian/Halium apilevel **30** (Android 11 halium) or 32; vendor itself is within Droidian's supported range.
+- Stock boot.img: header v2, page 4096, kernel load 0x8000, ramdisk 0x1000000, dtb 0x1f00000 (15.8 MB appended in boot), tags 0x100, os 12.0.0, cmdline console=ttyMSM0 ... androidboot.hardware=qcom swiotlb=2048 kpti=off (unpacked in firmware/stock-a13/boot-unpacked). These feed debian/kernel-info.mk.
+- Stock partition layout/ super_def json in the package: super 10200547328 bytes, group qti_dynamic_partitions (dynamic partitions confirmed).
+=> Prerequisite (vendor) is satisfied. Remaining unknown: which Halium system API level/Android version to base the Droidian system image on given vendor API 30 under Android 13 (ask Droidian community).
