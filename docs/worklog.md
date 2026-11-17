@@ -143,3 +143,13 @@
   patches/<tree>/ for frameworks/base, build/soong, vendor/* — blobs are never pushed). ATTRIBUTION.md + AI_DISCLOSURE.md.
 - Re-publish with `python3 scripts/publish_trees.py --go`.
 - Started rebuild: A16 (Aperture instead of OplusCamera) then A17.
+
+## 2026-11-17 — Custom ReSukiSU manager signing key
+- A16 Aperture build finished (releases/a16-aperture, sha 044fef17…). A17 paused (killed early) to add manager key.
+- No usable ReSukiSU manager exists for kernel b6ec6e08 (releases need >=35002). Building manager from pinned source.
+- Kernel only trusts manager APKs with known cert (size+sha256). Generated own key: keys/bitra-ksu.jks (+ keys/sign.properties,
+  git-ignored; BACK THIS UP). Cert size 747, sha256 206b094c…8478. Added `export KSU_EXPECTED_SIZE/HASH` to drivers/Makefile in both kernels.
+- Rebuilding A16 then A17 with this kernel.
+- Built manager from pinned source (b6ec6e08): ksud via cargo-ndk (rust stable 1.100, NDK 28.2, arm64 only, tools via mise/rustup),
+  APK via Gradle 9.4.1 + AOSP jdk21, signed with keys/bitra-ksu.jks. Version code 34830 = kernel's. Cert sha256 verified = kernel's
+  KSU_EXPECTED_HASH. Output: releases/resukisu-manager/ReSukiSU_v4.1.0_34830-arm64-v8a-release.apk. Works only with kernels built with the key patch.
