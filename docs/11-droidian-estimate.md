@@ -66,3 +66,9 @@ Extracted (python zipfile, untrusted) to firmware/stock-a13/: boot, dtbo, vbmeta
 - USB debug on the Mac: macOS has no RNDIS driver. Kernel has CONFIG_USB_CONFIGFS_NCM (CDC-NCM works natively on macOS) and RNDIS; ACM/ECM are NOT enabled -> add USB_CONFIGFS_ACM / ECM in a debug fragment if a serial console is wanted.
 - AppArmor is not in the kernel (Droidian images pass `apparmor=1 security=apparmor`); Droidian 4.19 fragments don't require it; add SECURITY_APPARMOR later if the rootfs needs it.
 - Next: initramfs (halium-boot / Droidian initramfs) + boot.img (header v2, offsets in this doc), then RAM-only `fastboot boot` on the Mac.
+
+## Stage 2 result: RAM boot succeeded (2026-11-17, user test on Mac)
+- `fastboot boot debug-boot.img` is accepted by the bootloader (no flashing). Kernel 4.19.325-cip136-st20-Entropy-1.7 (our Droidian-config build, uname date 19:47 IST) boots, runs our /init, binds UDC `a600000.dwc3`, and the macOS host sees USB `halium-debug` (1d6b:0104, serial bitra0001, 480 Mb/s), brings up `en9` (CDC-NCM), ping 192.168.2.15 ~1.5 ms 0% loss, root shell via `nc 192.168.2.15 23`.
+- Bootloader appended to our cmdline: androidboot.mode=fastboot, verifiedbootstate=orange, bootdevice=1d84000.ufshc, boot_devices=soc/1d84000.ufshc, panel `qcom,mdss_dsi_oppo21619samsung_ams662zs01_1080_2400_cmd_dvt`, dtbo_idx=5, project_codename=instantnoodle(sic), plus Oplus extras. Useful for the real cmdline.
+- dmesg after ~5 min: Oplus charger/gauge drivers (mp2650, bq27541, VOOC) run fine (battery 89%); `servloc: Unable to connect to service locator` / adsprpc PDR down = EXPECTED without Android userspace (pd-mapper/qrtr-ns/rmt_storage not running); no panics.
+- Lesson: macOS needs NCM, not RNDIS — works. fastboot boot works on this bootloader, so iterating needs no flashing.

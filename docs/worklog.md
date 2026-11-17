@@ -165,3 +165,4 @@
 - Droidian: stock A13 package found in firmware/EDL; vendor (API30/Android12-level Treble vendor) + boot extracted to firmware/stock-a13/. See docs/11.
 - Droidian stage 1: kernel builds with Halium/Droidian fragments in a separate tree (roms/droidian/kernel, branch droidian pushed to fork). Artifacts releases/droidian-kernel/. Test machine is a Mac (see docs/11).
 - Droidian stage 2: debug initramfs + RAM boot image built (releases/droidian-debug); Mac test procedure in docs/13.
+- Droidian stage 2 PASSED: RAM boot, USB NCM shell from Mac (docs/11).
