@@ -167,3 +167,4 @@
 - Droidian stage 2: debug initramfs + RAM boot image built (releases/droidian-debug); Mac test procedure in docs/13.
 - Droidian stage 2 PASSED: RAM boot, USB NCM shell from Mac (docs/11).
 - Droidian: userdata-files install researched (docs/14): viable via patched initramfs (vendor.img dead-code bug), no partition writes. User reboots RAM-boot with vol-up+power 6s.
+- Droidian: user OK'd wiping Lineage. Verified official rootfs/initrd assets; plan in docs/14 (super.img via lpmake, userdata ext4 w/ rootfs.img, patched initrd).
