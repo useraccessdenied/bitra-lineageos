@@ -123,6 +123,20 @@ exit 0
 """
 
 
+DBG_INIT = r"""#!/bin/sh
+# bitra: interactive bisect init. Brings up the USB NCM shell, then WAITS. The real Droidian init is /init.droidian.
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+mkdir -p /sys /proc /dev /tmp /run
+mount -t sysfs sysfs /sys; mount -t proc proc /proc
+mount -t devtmpfs devtmpfs /dev; mkdir -p /dev/pts; mount -t devpts devpts /dev/pts
+mount -t tmpfs tmpfs /run
+echo "bitra: dbg init, starting gadget" > /dev/kmsg
+/scripts/init-premount/bitra-usb
+echo "bitra: gadget done; shell on 192.168.2.15:23. Run: sh -x /init.droidian > /tmp/d.log 2>&1 &" > /dev/kmsg
+while true; do echo "bitra: dbg alive $(cut -d' ' -f1 /proc/uptime)" > /dev/kmsg; sleep 10; done
+"""
+
+
 def run(cmd, ok_codes=False):
     r = subprocess.run([str(c) for c in cmd], text=True, capture_output=True, stdin=subprocess.DEVNULL)
     if r.returncode and not ok_codes:
@@ -274,6 +288,21 @@ def stage_boot():
     rd = WORK / "initrd.img"
     with gzip.GzipFile(rd, "wb", mtime=0, compresslevel=6) as g:
         g.write(cpio_write(ents))
+    # bisect variant: Droidian initramfs, but /init is our gadget+wait script; real init kept as /init.droidian
+    dbg = [list(e) for e in ents]
+    for e in dbg:
+        if e[0] == "init":
+            e[0] = "init.droidian"; orig = e
+    f = list(orig[1]); f[0] = max(x[1][0] for x in dbg) + 1; f[4] = 1
+    dbg.append(["init", f, DBG_INIT.encode()])
+    rd2 = WORK / "initrd-dbg.img"
+    with gzip.GzipFile(rd2, "wb", mtime=0, compresslevel=6) as g:
+        g.write(cpio_write(dbg))
+    run([sys.executable, MKBOOTIMG, "--header_version", "2", "--kernel", KERNEL, "--ramdisk", rd2, "--dtb", DTB,
+         "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", "0x2100000", "--dtb_offset", "0x1f00000",
+         "--tags_offset", "0x100", "--pagesize", "4096", "--os_version", "13.0.0", "--os_patch_level", "2024-10",
+         "--cmdline", CMDLINE, "-o", OUT / "boot-dbg.img"])
+    print("boot-dbg.img ok")
     for name, kern in (("boot.img", KERNEL), ("boot-gz.img", KERNEL.with_name("Image.gz"))):
       boot = OUT / name
       run([sys.executable, MKBOOTIMG, "--header_version", "2", "--kernel", kern, "--ramdisk", rd, "--dtb", DTB,
@@ -292,7 +321,7 @@ def main():
         print(f"== {s}", flush=True)
         {"super": stage_super, "rootfs": stage_rootfs, "userdata": stage_userdata, "boot": stage_boot}[s]()
     sums = ""
-    for n in ("boot.img", "boot-gz.img", "super.img", "userdata.img"):
+    for n in ("boot.img", "boot-gz.img", "boot-dbg.img", "super.img", "userdata.img"):
         if (OUT / n).exists():
             sums += f"{sha(OUT / n)}  {n}\n"
     (OUT / "SHA256SUMS").write_text(sums)

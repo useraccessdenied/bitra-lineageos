@@ -48,3 +48,10 @@ droidian-dmesg.txt + pasted output: `Freeing initrd memory: 972K` (Droidian init
 - boot.img a9942aef…132219 / boot-gz.img bce9de62…a21cbde: gadget now started from the TOP of Droidian's /init (after /dev mounts; kmsg "bitra: early init hook").
 - releases/droidian-debug/debug-big.img a6c1d516…f72ae: debug init + 16 MB random padding ramdisk @0x2100000 (same layout as Droidian images) => tests "big ramdisk/layout breaks boot" vs "Droidian init hangs".
 Reading: debug-big works + Droidian images don't => Droidian's /init stalls before our hook; debug-big fails => size/layout problem at the bootloader/kernel level.
+
+## Update 4: results so far + bisect images
+- debug-big.img (17 MB ramdisk @0x2100000, raw kernel) WORKS: size/layout are fine. (`Freeing initrd memory: 17364K`.) No ramoops region in DT => pstore gives no previous-boot log.
+- Droidian-initrd images (boot.img, boot-gz.img) show no adapter even with the gadget hooked at the top of /init. Bisect images:
+  1. debug-big-selinux.img f59e828b…18b42 = debug-big + cmdline `selinux=0 androidboot.selinux=permissive` -> tests the cmdline.
+  2. releases/droidian-install/boot-dbg.img 998d3faef5e21e5f711dbee595f157b118927cf1b45d23d91e7f7a952280d7d2 = Droidian initramfs (repacked) but /init = our gadget+wait script; real init kept as /init.droidian -> tests that the repacked initramfs boots, and lets us run `sh -x /init.droidian > /tmp/d.log 2>&1 &` by hand and read the trace over telnet.
+- Also check `system_profiler SPUSBDataType` during failing Droidian boots (USB device may enumerate without en9).

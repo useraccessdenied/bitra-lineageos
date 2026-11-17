@@ -104,6 +104,7 @@ def main():
     ap.add_argument("--pad-mb", type=int, default=0, help="add incompressible padding to the ramdisk (size experiment)")
     ap.add_argument("--ramdisk-offset", default="0x1000000")
     ap.add_argument("--boot-name", default="debug-boot.img")
+    ap.add_argument("--cmdline-extra", default="", help="appended to the kernel cmdline (bisect experiments)")
     a = ap.parse_args()
     for p in (BUSYBOX, MKBOOTIMG, Path(a.kernel), Path(a.dtb)):
         if not Path(p).exists():
@@ -126,7 +127,7 @@ def main():
     cmd = [sys.executable, str(MKBOOTIMG), "--header_version", "2", "--kernel", a.kernel, "--ramdisk", str(ramdisk),
            "--dtb", a.dtb, "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", a.ramdisk_offset,
            "--dtb_offset", "0x1f00000", "--tags_offset", "0x100", "--pagesize", "4096",
-           "--os_version", "13.0.0", "--os_patch_level", "2024-10", "--cmdline", CMDLINE, "-o", str(boot)]
+           "--os_version", "13.0.0", "--os_patch_level", "2024-10", "--cmdline", (CMDLINE + " " + a.cmdline_extra).strip(), "-o", str(boot)]
     subprocess.run(cmd, check=True)
     (out / "init").write_text(INIT)
     sums = (out / "SHA256SUMS").read_text() if (out / "SHA256SUMS").exists() else ""
