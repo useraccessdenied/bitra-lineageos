@@ -266,9 +266,11 @@ def stage_boot():
     tmpl = next(e for e in ents if e[0] == "scripts/init-premount/dropbear")
     f = list(tmpl[1]); f[0] = max(e[1][0] for e in ents) + 1; f[4] = 1
     ents.append(["scripts/init-premount/bitra-usb", f, PREMOUNT_GADGET.encode()])
+    marker = b"mkdir -m 0755 /run/initramfs\n"
     for e in ents:
-        if e[0] == "scripts/init-premount/ORDER":
-            e[2] = b'/scripts/init-premount/bitra-usb "$@"\n[ -e /conf/param.conf ] && . /conf/param.conf\n' + e[2]
+        if e[0] == "init":
+            assert marker in e[2], "init layout changed"
+            e[2] = e[2].replace(marker, marker + b'echo "bitra: early init hook" > /dev/kmsg\n( /scripts/init-premount/bitra-usb >/dev/kmsg 2>&1 & )\n', 1)
     rd = WORK / "initrd.img"
     with gzip.GzipFile(rd, "wb", mtime=0, compresslevel=6) as g:
         g.write(cpio_write(ents))

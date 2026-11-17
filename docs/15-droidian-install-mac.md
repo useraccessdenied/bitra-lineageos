@@ -42,3 +42,9 @@ User: after the cable fix, debug-boot.img still gives `en9`, but boot.img / boot
 
 ## Update 2: ramdisk/dtb overlap (likely root cause of "no adapter")
 Header layout was ramdisk@0x1000000 (16.09 MiB -> ends 0x201603d) and dtb@0x1f00000 => 1.09 MiB overlap (debug-boot.img's ramdisk was 1 MB so it fit). Moved ramdisk_offset to 0x2100000 (after the dtb end 0x205d57f). New hashes: boot.img 0756c069…3f27f2 (73 MiB), boot-gz.img 2f1323a6…78dfd7 (41 MiB). If this still fails, fallback = shrink the initramfs (drop hwdb/fonts/plymouth, ~12 MB) so the original offsets fit.
+
+## Update 3 (2026-11-17): the dmesg the user sent was from debug-boot.img, not Droidian
+droidian-dmesg.txt + pasted output: `Freeing initrd memory: 972K` (Droidian initrd is ~17 MB), `bitra-debug: …` heartbeats, cmdline lacks `selinux=0 androidboot.selinux=permissive` => debug-boot.img was booted; Droidian images still give no adapter. Next experiments:
+- boot.img a9942aef…132219 / boot-gz.img bce9de62…a21cbde: gadget now started from the TOP of Droidian's /init (after /dev mounts; kmsg "bitra: early init hook").
+- releases/droidian-debug/debug-big.img a6c1d516…f72ae: debug init + 16 MB random padding ramdisk @0x2100000 (same layout as Droidian images) => tests "big ramdisk/layout breaks boot" vs "Droidian init hangs".
+Reading: debug-big works + Droidian images don't => Droidian's /init stalls before our hook; debug-big fails => size/layout problem at the bootloader/kernel level.

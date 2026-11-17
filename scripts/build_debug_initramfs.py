@@ -101,6 +101,9 @@ def main():
     ap.add_argument("--kernel", default=str(KERNEL_DEFAULT))
     ap.add_argument("--dtb", default=str(DTB_DEFAULT))
     ap.add_argument("--out", default=str(ROOT / "releases/droidian-debug"))
+    ap.add_argument("--pad-mb", type=int, default=0, help="add incompressible padding to the ramdisk (size experiment)")
+    ap.add_argument("--ramdisk-offset", default="0x1000000")
+    ap.add_argument("--boot-name", default="debug-boot.img")
     a = ap.parse_args()
     for p in (BUSYBOX, MKBOOTIMG, Path(a.kernel), Path(a.dtb)):
         if not Path(p).exists():
@@ -113,18 +116,21 @@ def main():
     entries += [("bin/busybox", X, bb, None), ("init", X, INIT.encode(), None),
                 ("etc/passwd", F, b"root::0:0:root:/:/bin/sh\n", None),
                 ("dev/console", stat.S_IFCHR | 0o600, None, (5, 1)), ("dev/null", stat.S_IFCHR | 0o666, None, (1, 3))]
-    ramdisk = out / "ramdisk.cpio.gz"
+    if a.pad_mb:
+        entries.append(("pad.bin", F, os.urandom(a.pad_mb << 20), None))
+    ramdisk = out / ("ramdisk-" + a.boot_name.replace(".img", "") + ".cpio.gz")
     with gzip.GzipFile(ramdisk, "wb", mtime=0) as g:
         g.write(cpio_newc(entries))
 
-    boot = out / "debug-boot.img"
+    boot = out / a.boot_name
     cmd = [sys.executable, str(MKBOOTIMG), "--header_version", "2", "--kernel", a.kernel, "--ramdisk", str(ramdisk),
-           "--dtb", a.dtb, "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", "0x1000000",
+           "--dtb", a.dtb, "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", a.ramdisk_offset,
            "--dtb_offset", "0x1f00000", "--tags_offset", "0x100", "--pagesize", "4096",
            "--os_version", "13.0.0", "--os_patch_level", "2024-10", "--cmdline", CMDLINE, "-o", str(boot)]
     subprocess.run(cmd, check=True)
     (out / "init").write_text(INIT)
-    sums = ""
+    sums = (out / "SHA256SUMS").read_text() if (out / "SHA256SUMS").exists() else ""
+    sums = "".join(l for l in sums.splitlines(True) if boot.name not in l and ramdisk.name not in l)
     for f in (boot, ramdisk):
         sums += f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}\n"
     sums += f"{hashlib.sha256(bb).hexdigest()}  (busybox source: {BUSYBOX.name}, from the KernelSU repo, topjohnwu build)\n"
