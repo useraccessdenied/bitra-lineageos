@@ -40,7 +40,7 @@ CMDLINE = ("console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0xa90000 androidbo
            "video=vfb:640x400,bpp=32,memsize=3072000 msm_rtb.filter=0x237 service_locator.enable=1 "
            "androidboot.usbcontroller=a600000.dwc3 swiotlb=2048 loop.max_part=7 "
            "cgroup.memory=nokmem,nosocket reboot=panic_warm kpti=off buildvariant=user "
-           "printk.devkmsg=on loglevel=7 androidboot.selinux=permissive systemd.log_target=kmsg systemd.log_level=info")
+           "printk.devkmsg=on loglevel=7 console=tty0 androidboot.selinux=permissive systemd.log_target=kmsg systemd.log_level=info")
 
 USB_DEBUG_SH = r"""#!/bin/bash
 # bitra bring-up (temporary): host-side USB CDC-NCM gadget + DHCP + unauthenticated root telnet.
