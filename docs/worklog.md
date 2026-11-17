@@ -133,3 +133,13 @@
 - Removed `OplusCamera` from vendor/oplus/camera/camera-vendor.mk (a16+a17; generated file, re-apply after re-extract). The
   OplusCamera android_app_import `overrides` Aperture/Camera2, so removing it lets Aperture (common_mobile_full.mk) build.
 - Support libs/blobs/oplus-support-wrapper left in place (HAL deps). Needs rebuild + test.
+
+## 2026-11-17 — Published to GitHub (all public)
+- gh 2.104 installed via mise (user-level). Account `useraccessdenied`.
+- Forks (upstream history/authorship kept; our commits on `bitra/a16` / `bitra/a17`, each with AI_DISCLOSURE.md):
+  android_{device_realme_sm8250-common,hardware_oplus,kernel_realme_sm8250}-axion (a16) and -sm8250common (a17).
+  Kernel branches pin ReSukiSU as submodule `KernelSU` (b6ec6e08).
+- Tracking repo: https://github.com/useraccessdenied/bitra-lineageos (docs, scripts, manifests/<tree>/bitra.xml pointing at the forks,
+  patches/<tree>/ for frameworks/base, build/soong, vendor/* — blobs are never pushed). ATTRIBUTION.md + AI_DISCLOSURE.md.
+- Re-publish with `python3 scripts/publish_trees.py --go`.
+- Started rebuild: A16 (Aperture instead of OplusCamera) then A17.
