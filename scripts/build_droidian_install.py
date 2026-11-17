@@ -149,6 +149,36 @@ while true; do echo "bitra: dbg alive $(cut -d' ' -f1 /proc/uptime)" > /dev/kmsg
 """
 
 
+COLLECT_SH = r"""#!/bin/bash
+# bitra: collect bring-up logs into /tmp/bringup.tgz (then send to the Mac, see end of output)
+D=/tmp/bringup; rm -rf $D; mkdir -p $D
+dmesg > $D/dmesg.txt
+journalctl -b --no-pager > $D/journal.txt
+systemctl --failed --no-pager > $D/failed.txt
+systemctl list-units --no-pager > $D/units.txt
+mount > $D/mounts.txt
+ps aux > $D/ps.txt
+lxc-ls -f > $D/lxc.txt 2>&1
+A="lxc-attach -n android --"
+$A /system/bin/logcat -d -b all > $D/logcat.txt 2>&1
+$A /system/bin/getprop > $D/getprop.txt 2>&1
+$A /system/bin/ls -l /dev/dri /dev/kgsl-3d0 /dev/graphics > $D/gfxdev.txt 2>&1
+$A /system/bin/cat /proc/self/cgroup > $D/cgroup.txt 2>&1
+tar czf /tmp/bringup.tgz -C $D .
+echo "done: /tmp/bringup.tgz ($(stat -c %s /tmp/bringup.tgz) bytes)"
+echo "send:  Mac: nc -l 9000 > bringup.tgz     phone: /usr/local/sbin/busybox-bitra nc <mac-ip> 9000 < /tmp/bringup.tgz"
+"""
+
+ODM_OVERLAY_BLOCK = """
+# bitra: overlay with sanitized VINTF manifests (Android-11 libvintf cannot parse the stock Android-13 AIDL entries).
+# Must run AFTER the fstab loop above, which mounts the real odm partition.
+if [ -d /usr/lib/droid-odm-overlay ] && [ -n "${BIND_MOUNT_PATH}" ]; then
+    echo "mounting bitra odm overlay"
+    mount -t overlay overlay -o lowerdir=/usr/lib/droid-odm-overlay:${BIND_MOUNT_PATH}/odm ${BIND_MOUNT_PATH}/odm
+fi
+"""
+
+
 def run(cmd, ok_codes=False):
     r = subprocess.run([str(c) for c in cmd], text=True, capture_output=True, stdin=subprocess.DEVNULL)
     if r.returncode and not ok_codes:
@@ -197,9 +227,12 @@ def stage_rootfs():
         sys.exit("mount-android.sh layout changed; update the patch")
     if "by-partlabel/${dp##" not in ma:
         ma = ma.replace(key, key + ODM_SNIPPET)
+    if "bitra odm overlay" not in ma:
+        ma = ma.rstrip("\n") + "\n" + ODM_OVERLAY_BLOCK
     tmp = WORK / "tmp"; tmp.mkdir(exist_ok=True)
     (tmp / "mount-android.sh").write_text(ma)
     (tmp / "bitra-usb-debug").write_text(USB_DEBUG_SH)
+    (tmp / "bitra-collect").write_text(COLLECT_SH)
     (tmp / "bitra-usb-debug.service").write_text(USB_DEBUG_UNIT)
     shutil.copy(BUSYBOX, tmp / "busybox-bitra")
     cmds = []
@@ -212,7 +245,31 @@ def stage_rootfs():
     put(tmp / "mount-android.sh", "/usr/sbin/mount-android.sh", 0o100755)
     put(tmp / "bitra-usb-debug", "/usr/sbin/bitra-usb-debug", 0o100755)
     put(tmp / "busybox-bitra", "/usr/local/sbin/busybox-bitra", 0o100755)
+    put(tmp / "bitra-collect", "/usr/local/sbin/bitra-collect", 0o100755)
     put(tmp / "bitra-usb-debug.service", "/etc/systemd/system/bitra-usb-debug.service", 0o100644)
+    # sanitized VINTF overlays (run scripts/vintf_sanitize.py first)
+    ov = WORK / "overlays"
+    if ov.is_dir():
+        targets = {"odm": "/usr/lib/droid-odm-overlay", "vendor": "/usr/lib/droid-vendor-overlay"}
+        for kind, base in targets.items():
+            kroot = ov / kind
+            if not kroot.is_dir():
+                continue
+            seen = {base}
+            cmds.append(f"mkdir {base}")
+            for f in sorted(kroot.rglob("*")):
+                rel = f.relative_to(kroot)
+                if f.is_dir():
+                    continue
+                parts = ("/etc/vintf/" + str(rel.relative_to("etc/vintf"))).split("/")
+                cur = base
+                for part in [x for x in (base + "/" + str(rel)).split("/")[:-1][len(base.split("/")):] if x]:
+                    cur += "/" + part
+                    if cur not in seen:
+                        cmds.append(f"mkdir {cur}"); seen.add(cur)
+                d, n = os.path.split(base + "/" + str(rel))
+                cmds.extend([f"cd {d}", f"rm {n}", f"write {f} {n}", f"set_inode_field {n} mode 0100644",
+                             f"set_inode_field {n} uid 0", f"set_inode_field {n} gid 0"])
     cmds += ["cd /etc/systemd/system/sysinit.target.wants", "rm bitra-usb-debug.service",
              "symlink bitra-usb-debug.service /etc/systemd/system/bitra-usb-debug.service"]
     (WORK / "debugfs.cmds").write_text("\n".join(cmds) + "\n")
@@ -220,6 +277,31 @@ def stage_rootfs():
     bad = [l for l in (r.stdout + r.stderr).splitlines() if "File not found" in l and "rm" not in l]
     run(["e2fsck", "-fn", img], ok_codes=True)
     print("rootfs patched:", img)
+
+
+def stage_livepatch():
+    """tar.gz that can be unpacked over / on the running phone (rootfs is writable): odm/vendor VINTF overlays + mount-android.sh"""
+    import tarfile
+    ov = WORK / "overlays"
+    OUT.mkdir(parents=True, exist_ok=True)
+    ma = debugfs_read(ROOTFS_SRC, "/usr/sbin/mount-android.sh").decode()
+    key = '    dmsetup create --concise "$(parse-android-dynparts /dev/disk/by-partlabel/super)"\n'
+    ma = ma.replace(key, key + ODM_SNIPPET).rstrip("\n") + "\n" + ODM_OVERLAY_BLOCK
+    tmp = WORK / "tmp"; tmp.mkdir(exist_ok=True)
+    (tmp / "mount-android.sh.new").write_text(ma)
+    (tmp / "bitra-collect").write_text(COLLECT_SH)
+    out = OUT / "vintf-live-patch.tgz"
+
+    def filt(ti):
+        ti.uid = ti.gid = 0; ti.uname = ti.gname = "root"; return ti
+    with tarfile.open(out, "w:gz") as t:
+        t.add(tmp / "mount-android.sh.new", arcname="usr/sbin/mount-android.sh", filter=lambda ti: (filt(ti), setattr(ti, "mode", 0o755))[0])
+        t.add(tmp / "bitra-collect", arcname="usr/local/sbin/bitra-collect", filter=lambda ti: (filt(ti), setattr(ti, "mode", 0o755))[0])
+        for kind, base in (("odm", "usr/lib/droid-odm-overlay"), ("vendor", "usr/lib/droid-vendor-overlay")):
+            for f in sorted((ov / kind).rglob("*")) if (ov / kind).is_dir() else []:
+                if f.is_file():
+                    t.add(f, arcname=f"{base}/{f.relative_to(ov / kind)}", filter=lambda ti: (filt(ti), setattr(ti, "mode", 0o644))[0])
+    print(f"livepatch: {out} ({out.stat().st_size} bytes) sha256 {sha(out)}")
 
 
 def stage_userdata():
@@ -326,12 +408,12 @@ def stage_boot():
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--stage", default="all", choices=["all", "super", "rootfs", "userdata", "boot"])
+    ap.add_argument("--stage", default="all", choices=["all", "super", "rootfs", "userdata", "boot", "livepatch"])
     a = ap.parse_args()
     st = ["super", "rootfs", "userdata", "boot"] if a.stage == "all" else [a.stage]
     for s in st:
         print(f"== {s}", flush=True)
-        {"super": stage_super, "rootfs": stage_rootfs, "userdata": stage_userdata, "boot": stage_boot}[s]()
+        {"super": stage_super, "rootfs": stage_rootfs, "userdata": stage_userdata, "boot": stage_boot, "livepatch": stage_livepatch}[s]()
     sums = ""
     for n in ("boot.img", "boot-gz.img", "boot-dbg.img", "super.img", "userdata.img"):
         if (OUT / n).exists():
