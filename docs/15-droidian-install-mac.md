@@ -36,3 +36,6 @@ Boot OrangeFox (releases/recovery/orangefox), `adb sideload` releases/a16-latest
 
 ## Troubleshooting: `fastboot boot boot.img` -> `FAILED (usb_write failed with status e00002ed)` (user report)
 0xe00002ed = macOS IOKit kIOReturnNotResponding (USB transfer stalled). Our earlier working RAM image (debug-boot.img) was 59 MB; boot.img is 77 MB (raw 58 MB kernel + 17 MB initramfs). Hypothesis: size/transport. Built `boot-gz.img` (41 MB, gzip kernel, sha256 5376097893739b931b2f7eb0da973f91b776eca43ba5a9c11da7cd4cf2bfa471) — try it first. Also: direct port (no hub), another cable, verify `shasum -a 256`, phone in bootloader fastboot (not fastbootd), retry.
+
+## Update: no USB adapter from Droidian boot images (user report); early-gadget builds
+User: after the cable fix, debug-boot.img still gives `en9`, but boot.img / boot-gz.img (Droidian initramfs) gave no adapter. Droidian's own USB comes only from its panic handler, so a hang earlier (or a failing gadget write) shows nothing. Rebuilt both boot images with our known-good NCM gadget as the FIRST init-premount script (`scripts/init-premount/bitra-usb`, 192.168.2.15, DHCP .20-.30, telnet :23, product "droidian-initrd"). New hashes: boot.img 1a502d80…c7149c, boot-gz.img fce28e17…c5b39f.

@@ -90,6 +90,39 @@ ODM_SNIPPET = """    for dp in /dev/mapper/dynpart-*; do
 """
 
 
+PREMOUNT_GADGET = r"""#!/bin/sh
+# bitra: earliest possible USB CDC-NCM debug gadget in the Droidian initramfs (same recipe as debug-boot.img,
+# which is known to enumerate on macOS). Runs before udev/mountroot so we get a shell even if boot hangs later.
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in prereqs) prereqs; exit 0;; esac
+echo "bitra-premount: starting USB NCM gadget" > /dev/kmsg
+mkdir -p /config; mount -t configfs none /config
+G=/config/usb_gadget/g1
+mkdir -p $G
+echo 0x1d6b > $G/idVendor
+echo 0x0104 > $G/idProduct
+mkdir -p $G/strings/0x409
+echo bitra > $G/strings/0x409/manufacturer
+echo droidian-initrd > $G/strings/0x409/product
+echo bitra0001 > $G/strings/0x409/serialnumber
+mkdir -p $G/configs/c.1/strings/0x409 $G/functions/ncm.usb0
+echo NCM > $G/configs/c.1/strings/0x409/configuration
+ln -s $G/functions/ncm.usb0 $G/configs/c.1/ncm.usb0
+i=0
+while [ -z "$(ls /sys/class/udc 2>/dev/null)" ] && [ $i -lt 20 ]; do sleep 1; i=$((i+1)); done
+echo "$(ls /sys/class/udc | head -n1)" > $G/UDC
+sleep 2
+ifconfig usb0 192.168.2.15 netmask 255.255.255.0 up
+printf 'start 192.168.2.20\nend 192.168.2.30\ninterface usb0\nlease_file /tmp/bitra-udhcpd.leases\noption subnet 255.255.255.0\n' > /tmp/bitra-udhcpd.conf
+touch /tmp/bitra-udhcpd.leases
+udhcpd /tmp/bitra-udhcpd.conf
+telnetd -b 0.0.0.0:23 -l /bin/sh
+echo "bitra-premount: usb0 192.168.2.15 telnet :23 up" > /dev/kmsg
+exit 0
+"""
+
+
 def run(cmd, ok_codes=False):
     r = subprocess.run([str(c) for c in cmd], text=True, capture_output=True, stdin=subprocess.DEVNULL)
     if r.returncode and not ok_codes:
@@ -229,6 +262,13 @@ def stage_boot():
             e[2] = s.encode(); hit = True
     if not hit:
         sys.exit("scripts/panic/telnet not found in initramfs")
+    # add the early gadget as the FIRST init-premount script
+    tmpl = next(e for e in ents if e[0] == "scripts/init-premount/dropbear")
+    f = list(tmpl[1]); f[0] = max(e[1][0] for e in ents) + 1; f[4] = 1
+    ents.append(["scripts/init-premount/bitra-usb", f, PREMOUNT_GADGET.encode()])
+    for e in ents:
+        if e[0] == "scripts/init-premount/ORDER":
+            e[2] = b'/scripts/init-premount/bitra-usb "$@"\n[ -e /conf/param.conf ] && . /conf/param.conf\n' + e[2]
     rd = WORK / "initrd.img"
     with gzip.GzipFile(rd, "wb", mtime=0, compresslevel=6) as g:
         g.write(cpio_write(ents))
