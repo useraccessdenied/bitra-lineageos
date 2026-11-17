@@ -275,7 +275,7 @@ def stage_boot():
     for name, kern in (("boot.img", KERNEL), ("boot-gz.img", KERNEL.with_name("Image.gz"))):
       boot = OUT / name
       run([sys.executable, MKBOOTIMG, "--header_version", "2", "--kernel", kern, "--ramdisk", rd, "--dtb", DTB,
-         "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", "0x1000000", "--dtb_offset", "0x1f00000",
+         "--base", "0x0", "--kernel_offset", "0x8000", "--ramdisk_offset", "0x2100000", "--dtb_offset", "0x1f00000",
            "--tags_offset", "0x100", "--pagesize", "4096", "--os_version", "13.0.0", "--os_patch_level", "2024-10",
            "--cmdline", CMDLINE, "-o", boot])
       print(f"{name} ok ({boot.stat().st_size >> 20} MiB)")

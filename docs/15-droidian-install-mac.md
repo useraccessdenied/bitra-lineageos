@@ -39,3 +39,6 @@ Boot OrangeFox (releases/recovery/orangefox), `adb sideload` releases/a16-latest
 
 ## Update: no USB adapter from Droidian boot images (user report); early-gadget builds
 User: after the cable fix, debug-boot.img still gives `en9`, but boot.img / boot-gz.img (Droidian initramfs) gave no adapter. Droidian's own USB comes only from its panic handler, so a hang earlier (or a failing gadget write) shows nothing. Rebuilt both boot images with our known-good NCM gadget as the FIRST init-premount script (`scripts/init-premount/bitra-usb`, 192.168.2.15, DHCP .20-.30, telnet :23, product "droidian-initrd"). New hashes: boot.img 1a502d80…c7149c, boot-gz.img fce28e17…c5b39f.
+
+## Update 2: ramdisk/dtb overlap (likely root cause of "no adapter")
+Header layout was ramdisk@0x1000000 (16.09 MiB -> ends 0x201603d) and dtb@0x1f00000 => 1.09 MiB overlap (debug-boot.img's ramdisk was 1 MB so it fit). Moved ramdisk_offset to 0x2100000 (after the dtb end 0x205d57f). New hashes: boot.img 0756c069…3f27f2 (73 MiB), boot-gz.img 2f1323a6…78dfd7 (41 MiB). If this still fails, fallback = shrink the initramfs (drop hwdb/fonts/plymouth, ~12 MB) so the original offsets fit.
