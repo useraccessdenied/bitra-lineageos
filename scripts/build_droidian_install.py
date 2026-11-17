@@ -40,47 +40,59 @@ CMDLINE = ("console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0xa90000 androidbo
            "video=vfb:640x400,bpp=32,memsize=3072000 msm_rtb.filter=0x237 service_locator.enable=1 "
            "androidboot.usbcontroller=a600000.dwc3 swiotlb=2048 loop.max_part=7 "
            "cgroup.memory=nokmem,nosocket reboot=panic_warm kpti=off buildvariant=user "
-           "printk.devkmsg=on loglevel=7 androidboot.selinux=permissive")
+           "printk.devkmsg=on loglevel=7 androidboot.selinux=permissive systemd.log_target=kmsg systemd.log_level=info")
 
 USB_DEBUG_SH = r"""#!/bin/bash
 # bitra bring-up (temporary): host-side USB CDC-NCM gadget + DHCP + unauthenticated root telnet.
-# Independent of the Android container. REMOVE before any real use (no authentication!).
+# Early (sysinit.target) and independent of the Android container / android-mount.service.
+# REMOVE before any real use (no authentication!).
 BB=/usr/local/sbin/busybox-bitra
 G=/sys/kernel/config/usb_gadget/g1
+log() { echo "bitra-usb-debug: $*" > /dev/kmsg; }
 mountpoint -q /sys/kernel/config || mount -t configfs none /sys/kernel/config
-mkdir -p $G
-[ -n "$(cat $G/UDC 2>/dev/null)" ] && echo "" > $G/UDC
-echo 0x1d6b > $G/idVendor
-echo 0x0104 > $G/idProduct
-mkdir -p $G/strings/0x409
-echo "bitra" > $G/strings/0x409/manufacturer
-echo "droidian-bitra" > $G/strings/0x409/product
-echo "bitra0001" > $G/strings/0x409/serialnumber
-rm -f $G/configs/c.1/* 2>/dev/null
-mkdir -p $G/configs/c.1/strings/0x409 $G/functions/ncm.usb0
-echo "NCM" > $G/configs/c.1/strings/0x409/configuration
-ln -s $G/functions/ncm.usb0 $G/configs/c.1/ncm.usb0
-for i in $(seq 1 30); do [ -n "$(ls /sys/class/udc 2>/dev/null)" ] && break; sleep 1; done
-echo "$(ls /sys/class/udc | head -n1)" > $G/UDC
-sleep 2
-$BB ifconfig usb0 10.15.19.82 netmask 255.255.255.0 up
-printf 'start 10.15.19.100\nend 10.15.19.110\ninterface usb0\nlease_file /run/bitra-udhcpd.leases\noption subnet 255.255.255.0\n' > /run/bitra-udhcpd.conf
+if [ -d $G ] && [ -n "$(cat $G/UDC 2>/dev/null)" ] && [ -d /sys/class/net/usb0 ]; then
+    log "gadget already bound (created by the initramfs); reusing it"
+else
+    mkdir -p $G
+    [ -n "$(cat $G/UDC 2>/dev/null)" ] && echo "" > $G/UDC
+    echo 0x1d6b > $G/idVendor
+    echo 0x0104 > $G/idProduct
+    mkdir -p $G/strings/0x409
+    echo "bitra" > $G/strings/0x409/manufacturer
+    echo "droidian-bitra" > $G/strings/0x409/product
+    echo "bitra0001" > $G/strings/0x409/serialnumber
+    rm -f $G/configs/c.1/* 2>/dev/null
+    mkdir -p $G/configs/c.1/strings/0x409 $G/functions/ncm.usb0
+    echo "NCM" > $G/configs/c.1/strings/0x409/configuration
+    ln -s $G/functions/ncm.usb0 $G/configs/c.1/ncm.usb0
+    for i in $(seq 1 30); do [ -n "$(ls /sys/class/udc 2>/dev/null)" ] && break; sleep 1; done
+    echo "$(ls /sys/class/udc | head -n1)" > $G/UDC
+    sleep 2
+    log "gadget created"
+fi
+$BB ifconfig usb0 192.168.2.15 netmask 255.255.255.0 up
+$BB ifconfig usb0:1 10.15.19.82 netmask 255.255.255.0 up 2>/dev/null
+printf 'start 192.168.2.20\nend 192.168.2.30\ninterface usb0\nlease_file /run/bitra-udhcpd.leases\noption subnet 255.255.255.0\n' > /run/bitra-udhcpd.conf
 touch /run/bitra-udhcpd.leases
 $BB udhcpd /run/bitra-udhcpd.conf
 $BB telnetd -b 0.0.0.0:23 -l /bin/bash
-echo "bitra-usb-debug: up on usb0 10.15.19.82, telnet :23" > /dev/kmsg
+log "up: usb0 192.168.2.15 (+10.15.19.82), telnet :23"
+exit 0
 """
 USB_DEBUG_UNIT = """[Unit]
 Description=bitra bring-up USB NCM gadget + debug telnet (temporary)
-After=local-fs.target sysinit.target
+DefaultDependencies=no
+After=systemd-remount-fs.service
+Before=sysinit.target
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+TimeoutStartSec=90
 ExecStart=/usr/sbin/bitra-usb-debug
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=sysinit.target
 """
 ODM_SNIPPET = """    for dp in /dev/mapper/dynpart-*; do
         [ -e "$dp" ] || continue
@@ -201,7 +213,7 @@ def stage_rootfs():
     put(tmp / "bitra-usb-debug", "/usr/sbin/bitra-usb-debug", 0o100755)
     put(tmp / "busybox-bitra", "/usr/local/sbin/busybox-bitra", 0o100755)
     put(tmp / "bitra-usb-debug.service", "/etc/systemd/system/bitra-usb-debug.service", 0o100644)
-    cmds += ["cd /etc/systemd/system/multi-user.target.wants", "rm bitra-usb-debug.service",
+    cmds += ["cd /etc/systemd/system/sysinit.target.wants", "rm bitra-usb-debug.service",
              "symlink bitra-usb-debug.service /etc/systemd/system/bitra-usb-debug.service"]
     (WORK / "debugfs.cmds").write_text("\n".join(cmds) + "\n")
     r = run(["debugfs", "-w", "-f", WORK / "debugfs.cmds", img], ok_codes=True)
