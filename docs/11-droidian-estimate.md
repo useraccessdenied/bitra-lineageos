@@ -33,3 +33,19 @@ Stays on the 4.19 kernel (same CVE exposure as the current ROM, see earlier kern
 2. Identify our stock vendor Android version (firmware zips in firmware/) and the matching Halium level.
 3. Run the Halium config checker on the bitra kernel config; draft fragment.
 4. Try `fastboot boot` of a halium-boot image (non-destructive RAM boot) before touching partitions. Backups exist in backups/20261116-213951.
+
+## Stage 0 recon results (2026-11-17, after A16/A17 verified working)
+Sources: github.com/droidian/porting-guide (docs.droidian.org/porting-guide/ returns 404), github.com/droidian-images/droidian devices.yml,
+github.com/orgs/droidian-devices/repositories (53 repos). Subagent report; claims below that are marked UNVERIFIED were not confirmed.
+- **Supported Android bases:** devices.yml apilevel 28/29/30/32/33 = Android 9/10/11/12(.1)/13. No Android 14+ device; Android 14 kernel base exists but no devices. => our vendor must be Android <= 13.
+- **No sm8250 / Snapdragon 865 / Realme device** in devices.yml or the 53 org repos (closest: Xiaomi miatoll, Sony kumano, Volla, Pixel 3a). bitra would be a brand-new port; nobody to copy an adaptation from.
+- **Vendor provenance (verified locally):** the blobs in vendor/realme/sm8250-common come from stock RMX3370 **Android 13** (fingerprint realme/RMX3370/RE879AL1:13/TP1A.220905.001, first_api_level 30) but the Lineage vendor/odm *images* are rebuilt as Android 16/17. Droidian/Halium needs a coherent Android-13 vendor, i.e. the *stock* RUI 4.0 vendor/odm, not our Lineage-built images. We only hold firmware-only zips (firmware/*/), no stock vendor.img => need the full stock RUI 4.0 OTA (Android 13) for RMX3370 first.
+- **Docker conflict:** Droidian's kernel packaging (releng-build-package) and rootfs-builder (debos image quay.io/droidian/rootfs-builder) are Docker based. Our rule is no containers: use the AOSP clang prebuilts + plain `make` for the kernel (already how we build), and host-native debos/debootstrap (needs root/sudo, may need layering on this Fedora Atomic host) for the rootfs.
+- **Non-A/B + dynamic partitions (super):** UNVERIFIED in Droidian docs. Droidian puts its rootfs in an image (LVM/rootfs.img, flashable to userdata) rather than system, so super only needs to carry vendor/odm; legacy flag FLASH_IS_LEGACY_DEVICE=1 for non-A/B.
+- Kernel: no Halium config checker script found; use lxc-checkconfig after first boot + diff against halium.config/droidian.config fragments; CONFIG_USB_CONFIGFS_RNDIS needed for debug. Packaging via debian/kernel-info.mk (offsets from unpackbootimg of stock boot.img).
+- Adaptation package generator: github.com/droidian-releng/droidian-build-tools `droidian-new-device -v realme -n bitra -c arm64 -a 33 -r phone -d droidian` (not yet read/verified).
+
+### Next steps (stage 1 prerequisites)
+1. Obtain full stock RUI 4.0 (Android 13) RMX3370 OTA (IN/EU/GLOBAL) -> extract vendor/odm/boot/dtbo/vbmeta (scripts/unpack_blockota.py handles block OTAs).
+2. Draft Halium/Droidian kernel fragment from the bitra .config (missing list in this doc) and build it host-native.
+3. First test without flashing partitions: `fastboot boot` of a halium-boot image (RAM only). Needs user go-ahead per step.

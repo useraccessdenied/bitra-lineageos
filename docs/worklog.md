@@ -153,3 +153,12 @@
 - Built manager from pinned source (b6ec6e08): ksud via cargo-ndk (rust stable 1.100, NDK 28.2, arm64 only, tools via mise/rustup),
   APK via Gradle 9.4.1 + AOSP jdk21, signed with keys/bitra-ksu.jks. Version code 34830 = kernel's. Cert sha256 verified = kernel's
   KSU_EXPECTED_HASH. Output: releases/resukisu-manager/ReSukiSU_v4.1.0_34830-arm64-v8a-release.apk. Works only with kernels built with the key patch.
+
+## 2026-11-17 — Final builds with manager key
+- A16 (Aperture, no OplusCamera) and A17 built OK; boot.img kernel contains the manager cert hash. Zips: releases/a16-latest, releases/a17-latest (sha in SHA256SUMS).
+- Deleted superseded releases (a16-oplusfwk-fix, a16-udfps-fix, a16-ksu-droidspaces, a16-aperture, a17-ksu-droidspaces). Kept releases/a16 (first
+  known-booting baseline + images), recovery/, resukisu-manager/. Kernel changes pushed to the forks.
+
+## 2026-11-17 — A16 and A17 verified by user; Droidian stage 0
+- User: A16 + A17 both work (root, ReSukiSU manager, Droidspaces, HBM fix, battery good). Starting Droidian.
+- Recon summary in docs/11-droidian-estimate.md. Blocker: need stock Android 13 vendor (full RUI 4.0 OTA); Droidian caps at Android 13; Docker-based tooling replaced with host-native.
