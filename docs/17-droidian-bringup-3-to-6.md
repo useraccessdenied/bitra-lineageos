@@ -18,7 +18,7 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 | Wi-Fi connected, no internet | NetworkManager l3cfg: `unable to configure IPv4 route` (subnet + default) although `ip route add` works | WORKAROUND `bitra-net-watch.service` (3 s poll, adds subnet + default via DHCP gateway) — works |
 
 ## Open / known
-- **Wi-Fi route workaround is dirty.** Real cause unknown: NM fails ~10 s after DHCP, during a system stall (rpmh "TCS Busy" spam); netmgrd/ipacm run in the shared netns; ip rule 220 origin unknown. Replace the poller once understood. (An NM dispatcher script did not fix it.)
+- **Wi-Fi routes: ROOT CAUSE FOUND (see below); kernel fix verified by RAM boot, not yet flashed.** `bitra-net-watch` is only a stop-gap until the fixed kernel is flashed.
 - **Bluetooth**: Settings toggle off→on does not power on, Phosh QuickSettings toggle does (Settings probably goes via rfkill); remote devices see the MAC, not the name, although main.conf/Alias are set. Data needed: `rfkill list`, `bluetoothctl show`, `journalctl -u bluetooth -u bluebinder`. `bitra-collect` now gathers these (bt.txt, net.txt, power-gsettings.txt).
 - **Splash**: plymouth logo vanishes after ~2 s, blank screen until Phosh. `plymouth quit --retain-splash` drop-in had no effect (likely hwcomposer re-initialising the panel). Cosmetic; skipped.
 - Unexplained device hang during a manual audio-HAL start test (no log; persistent journal now on).
@@ -30,3 +30,11 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 - `lxc-attach` swallows stdin: use `</dev/null`; container lacks `ps`/`start` on PATH (`/system/bin/ps`).
 - Stock `*_dlkm` modprobe (module_layout) failures are harmless.
 - Shell choice: Phosh is the supported one; Lomiri possible later (needs Droidian packages/porting).
+
+## Wi-Fi route root cause (2026-11-18, found with bitra-agent)
+- NM trace (`nmcli general logging level TRACE domains PLATFORM,IP4`, then `nmcli device reapply`): `do-add-ip4-route[192.168.1.0/24 dev wlan0 ... scope link]: failure 101 (Network is unreachable - Nexthop has invalid gateway)`; the default route then fails for lack of the on-link route. NM retries failed objects after 10 s (the "10 s gap" and the late warning).
+- That kernel message only comes from the gateway branch of `fib_check_nh()` (net/ipv4/fib_semantics.c). A raw netlink replay (scratch script, veth pair) showed a subnet route with the NM message shape is accepted, but the same request with `RTA_GATEWAY=0.0.0.0` fails with exactly -101. This 4.19 tree has the 5.x-style `fc_gw_family` handling (set whenever the attribute is present), so a zero gateway is looked up as a real nexthop and fails unless some default route already exists (which is why it was timing dependent: it worked when e.g. a cellular default route was up).
+- Fix: `net/ipv4/fib_frontend.c` `rtm_to_fib_config()`: ignore an all-zero `RTA_GATEWAY` (pre-5.2 semantics). Kernel branch `droidian`. Verified: two RAM boots (`ramboot`) with `bitra-net-watch` disabled: NM installs `192.168.1.0/24` and the default route itself, 0 "unable to configure IPv4 route" warnings.
+- NM itself was never seen emitting the zero gateway (no strace on the phone); the evidence is the identical error from the replay plus the fix working.
+- Side findings: (1) udev sometimes renames `wlan0` to `wlp1s0` (predictable names, race; p2p0/wifi-aware0 collide) - `bitra-net-watch` is hard-coded to wlan0; consider `net.ifnames=0` or a .link file. (2) `example.com` does not resolve on the user's home router (UDP DNS to the router/1.1.1.1/8.8.8.8 all time out for that name only); other names, NTP and HTTPS work. Not a phone bug.
+- Next: flash boot-gz.img (`ssh mac flash boot ...`), then drop `bitra-net-watch` from scripts/build_droidian_install.py.

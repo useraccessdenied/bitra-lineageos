@@ -174,3 +174,7 @@
 ## 2026-11-18 — Droidian bring-up #3–#6
 - Phosh up; fixed touch (kernel abs axes + notify_panel_blank resume), audio (policy overlay + HAL rc), BT/modem boot services, device name, auto-brightness curve, persistent journal, Wi-Fi route workaround (bitra-net-watch). Details + open issues: docs/17-droidian-bringup-3-to-6.md.
 - Open: clean Wi-Fi route fix, Bluetooth Settings toggle/name, splash gap. Scripts: scripts/build_droidian_install.py, scripts/audio_sanitize.py.
+
+## 2026-11-18 (late) — bitra-agent + Wi-Fi route root cause
+- bitra-agent (outside the repo, ~/projects/bitra-agent) drives the Mac over ssh: state/collect/live-patch/to-fastboot/ramboot verified on the phone; stdin swallow by lxc-attach fixed inside it.
+- Wi-Fi routes: NM sends RTA_GATEWAY 0.0.0.0, the 4.19 tree rejects it (-ENETUNREACH) without a default route. Kernel fix in fib_frontend.c, verified with 2 RAM boots. Details in docs/17.
