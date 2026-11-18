@@ -3,7 +3,7 @@
 > **AI-assisted, experimental.** See [AI_DISCLOSURE.md](AI_DISCLOSURE.md) and [ATTRIBUTION.md](ATTRIBUTION.md). Not affiliated with LineageOS, Realme/Oplus or any maintainer; no warranty, flash at your own risk.
 
 
-Long-term goal: custom ROMs (LineageOS first), then Linux ports (Ubuntu Touch / Halium, postmarketOS, mainline).
+Long-term goal: custom ROMs (LineageOS first), then Linux ports (Droidian/Halium now; Ubuntu Touch, postmarketOS, mainline later).
 
 ## Layout
 
@@ -32,9 +32,20 @@ Long-term goal: custom ROMs (LineageOS first), then Linux ports (Ubuntu Touch / 
 9. `docs/08-proprietary-analysis.md` — proprietary vs open inventory, open-source/Halium path
 10. `docs/09-mainline-and-reverse-engineering.md` — mainline SM8250 status, driver gaps, effort estimate
 11. `docs/10-hakios-evaluation.md` — HakiOS (iOS on Android) claims vs reality, viability for bitra
-12. `docs/worklog.md` — chronological log; append every session
+12. `docs/11`–`docs/15` — Droidian estimate, postmarketOS estimate, RAM-boot test, userdata install research, Mac install procedure
+13. `docs/16-droidian-bringup-1.md`, `docs/17-droidian-bringup-3-to-6.md` — Droidian bring-up findings, fixes, open issues
+14. `docs/worklog.md` — chronological log; append every session
 
-Status: **A16 build done (releases/a16/). Not flashed yet. Next: OrangeFox, flash, bring-up; then A17.**
+Status: LineageOS A16 and A17 built and verified on the device. **Droidian (Phosh) boots and runs**: touch, audio, Wi-Fi,
+auto-brightness work; open issues are Bluetooth toggle/name, a Wi-Fi route workaround and the boot splash gap (see docs/17).
+
+## Droidian port (where things live)
+- **Kernel**: separate tree/branch, NOT the Lineage kernels — branch `droidian` of
+  [useraccessdenied/android_kernel_realme_sm8250-axion](https://github.com/useraccessdenied/android_kernel_realme_sm8250-axion/tree/droidian)
+  (no KernelSU/SUSFS; fanotify fix; Oplus touchpanel input-axes fix). The Halium/Droidian **config fragments** are not in that branch;
+  they are in this repo: `scripts/kernel-config/{halium,droidian}.config`, applied by `scripts/build_droidian_kernel.py`.
+- **Image build**: `scripts/build_droidian_install.py` (super/rootfs/userdata/boot), `scripts/vintf_sanitize.py`, `scripts/audio_sanitize.py`.
+- Images/logs are not tracked (see `.gitignore`).
 
 ## Layout additions
 - `backups/` — verified device partition backups (see backups/README.md). Read-only; do not modify.
