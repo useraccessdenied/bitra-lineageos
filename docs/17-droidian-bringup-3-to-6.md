@@ -19,7 +19,7 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 
 ## Open / known
 - **Wi-Fi routes: FIXED in the kernel** (see 'Wi-Fi route root cause' below). Fixed kernel flashed to `boot` (boot-gz.img, build #5); `bitra-net-watch` removed from the image build and from the phone. Verified after a normal reboot.
-- **Bluetooth**: Settings toggle off→on does not power on, Phosh QuickSettings toggle does (Settings probably goes via rfkill); remote devices see the MAC, not the name, although main.conf/Alias are set. Data needed: `rfkill list`, `bluetoothctl show`, `journalctl -u bluetooth -u bluebinder`. `bitra-collect` now gathers these (bt.txt, net.txt, power-gsettings.txt).
+- **Bluetooth name: FIXED in the kernel (RAM-boot verified, not yet flashed)**, see below. Still open: Settings toggle off→on does not power on, Phosh QuickSettings toggle does (Settings probably goes via rfkill). `bitra-collect` gathers bt.txt, net.txt, power-gsettings.txt.
 - **Splash**: plymouth logo vanishes after ~2 s, blank screen until Phosh. `plymouth quit --retain-splash` drop-in had no effect (likely hwcomposer re-initialising the panel). Cosmetic; skipped.
 - Unexplained device hang during a manual audio-HAL start test (no log; persistent journal now on).
 - Cellular "Default" connection fails: user has no data plan (ignore). Torch toggle, sensors, fingerprint, NFC untested.
@@ -38,3 +38,13 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 - NM itself was never seen emitting the zero gateway (no strace on the phone); the evidence is the identical error from the replay plus the fix working.
 - Side findings: (1) udev sometimes renames `wlan0` to `wlp1s0` (predictable names, race; p2p0/wifi-aware0 collide) - `bitra-net-watch` is hard-coded to wlan0; consider `net.ifnames=0` or a .link file. (2) `example.com` does not resolve on the user's home router (UDP DNS to the router/1.1.1.1/8.8.8.8 all time out for that name only); other names, NTP and HTTPS work. Not a phone bug.
 - Done: boot-gz.img (sha 4fff6165…) flashed with `bitra-agent flash boot`; `bitra-net-watch` dropped from scripts/build_droidian_install.py; new userdata.img d7cd1359… (not flashed; the running phone has the service removed live).
+
+## Wi-Fi interface rename (2026-11-19)
+- cnss_pci creates three netdevs at once: `wlan0`, `p2p0`, `wifi-aware0`. systemd's `99-default.link` (`NamePolicy=keep kernel database onboard slot path`) gives all three the same path name `wlp1s0`; the first udev worker wins, the others log `Failed to rename ... File exists`. Journal of 10 boots: nearly every boot had the race; some left wlan0 renamed to `wlp1s0` (NM then handles it, but anything hard-coded to wlan0 breaks).
+- Fix: `/etc/systemd/network/10-bitra-wlan.link` (`[Match] OriginalName=wlan0 p2p0 wifi-aware0`, `[Link] NamePolicy=keep`). Added to scripts/build_droidian_install.py. Verified live (live-patch + 4 reboots): always `wlan0 p2p0 wifi-aware0`, 0 rename failures.
+
+## Bluetooth name (2026-11-19)
+- Symptom: remote devices show the BD address instead of "Droidian for Bitra", although bluetoothctl/BlueZ show the right Name/Alias.
+- btmon: right after reset the chip's local name is empty (`Read Local Name -> Name:`); the kernel never sends `Write Local Name (0x0c13)`; BlueZ's later `Set Local Name` with the same value returns early (`set_local_name`: name unchanged). EIR/class are re-sent through Add UUID, so only the name stayed empty. Writing the name raw (`hcitool cmd 0x03 0x0013 ...`) works and `hciconfig hci0 name` shows it.
+- Cause: `powered_update_hci()` (net/bluetooth/hci_request.c) queues the LE advertising setup first. The controller answers `LE Set Extended Scan Response Data` with status 0x12 (Invalid HCI Command Parameters); the HCI core drops the rest of the request, including the BR/EDR block (scan, class, **name**, EIR).
+- Fix: move the BR/EDR block before the LE block in `powered_update_hci()`. RAM-boot verified (kernel #6): name present after boot, after `bluetoothctl power off/on`, and after `systemctl restart bluetooth` (btmon shows `Write Local Name ... Status: Success`). The user still has to confirm that a remote device now shows the name. The LE ext-adv rejection itself is not understood (BLE advertising name unaffected for now).
