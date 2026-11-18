@@ -15,10 +15,10 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 | Device name "Kona for arm64" | first-boot runonce takes `ro.product.vendor.model` | `preferred-hostname`, `/etc/machine-info`, BT `main.conf` Name = "Droidian for Bitra" |
 | Auto-brightness far too dim | ALS under the OLED reads low (~300 lux in a lit room) | gsettings override `ambient-brightness-points={1: 12, 20: 35, 100: 62, 300: 85, 1000: 95, 3000: 100}` (compiled into gschemas) — user: optimal |
 | No crash logs after hang | Droidian ships journald `Storage=volatile`; pstore empty | `/etc/systemd/journald.conf.d/10-journald-volatile.conf` override (persistent) |
-| Wi-Fi connected, no internet | NetworkManager l3cfg: `unable to configure IPv4 route` (subnet + default) although `ip route add` works | WORKAROUND `bitra-net-watch.service` (3 s poll, adds subnet + default via DHCP gateway) — works |
+| Wi-Fi connected, no internet | NM sends RTA_GATEWAY 0.0.0.0; kernel rejects it (-ENETUNREACH) | kernel fix in fib_frontend.c (see below); the interim poller `bitra-net-watch` is gone |
 
 ## Open / known
-- **Wi-Fi routes: ROOT CAUSE FOUND (see below); kernel fix verified by RAM boot, not yet flashed.** `bitra-net-watch` is only a stop-gap until the fixed kernel is flashed.
+- **Wi-Fi routes: FIXED in the kernel** (see 'Wi-Fi route root cause' below). Fixed kernel flashed to `boot` (boot-gz.img, build #5); `bitra-net-watch` removed from the image build and from the phone. Verified after a normal reboot.
 - **Bluetooth**: Settings toggle off→on does not power on, Phosh QuickSettings toggle does (Settings probably goes via rfkill); remote devices see the MAC, not the name, although main.conf/Alias are set. Data needed: `rfkill list`, `bluetoothctl show`, `journalctl -u bluetooth -u bluebinder`. `bitra-collect` now gathers these (bt.txt, net.txt, power-gsettings.txt).
 - **Splash**: plymouth logo vanishes after ~2 s, blank screen until Phosh. `plymouth quit --retain-splash` drop-in had no effect (likely hwcomposer re-initialising the panel). Cosmetic; skipped.
 - Unexplained device hang during a manual audio-HAL start test (no log; persistent journal now on).
@@ -37,4 +37,4 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 - Fix: `net/ipv4/fib_frontend.c` `rtm_to_fib_config()`: ignore an all-zero `RTA_GATEWAY` (pre-5.2 semantics). Kernel branch `droidian`. Verified: two RAM boots (`ramboot`) with `bitra-net-watch` disabled: NM installs `192.168.1.0/24` and the default route itself, 0 "unable to configure IPv4 route" warnings.
 - NM itself was never seen emitting the zero gateway (no strace on the phone); the evidence is the identical error from the replay plus the fix working.
 - Side findings: (1) udev sometimes renames `wlan0` to `wlp1s0` (predictable names, race; p2p0/wifi-aware0 collide) - `bitra-net-watch` is hard-coded to wlan0; consider `net.ifnames=0` or a .link file. (2) `example.com` does not resolve on the user's home router (UDP DNS to the router/1.1.1.1/8.8.8.8 all time out for that name only); other names, NTP and HTTPS work. Not a phone bug.
-- Next: flash boot-gz.img (`ssh mac flash boot ...`), then drop `bitra-net-watch` from scripts/build_droidian_install.py.
+- Done: boot-gz.img (sha 4fff6165…) flashed with `bitra-agent flash boot`; `bitra-net-watch` dropped from scripts/build_droidian_install.py; new userdata.img d7cd1359… (not flashed; the running phone has the service removed live).

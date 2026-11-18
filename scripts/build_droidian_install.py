@@ -167,7 +167,7 @@ $A /system/bin/cat /proc/self/cgroup > $D/cgroup.txt 2>&1
 { ip addr; echo; ip -4 route; echo; ip rule; echo; nmcli -f all device show wlan0; nmcli con show; } > $D/net.txt 2>&1
 { rfkill list; echo; bluetoothctl show; echo; bluetoothctl devices; echo; systemctl status bluetooth bluebinder bitra-bt-recover --no-pager; } > $D/bt.txt 2>&1
 gsettings list-recursively org.gnome.settings-daemon.plugins.power > $D/power-gsettings.txt 2>&1
-journalctl -b --no-pager -u bitra-net-watch -u bitra-bt-recover -u bluetooth -u bluebinder > $D/bitra-units.txt 2>&1
+journalctl -b --no-pager -u bitra-bt-recover -u bluetooth -u bluebinder > $D/bitra-units.txt 2>&1
 tar czf /tmp/bringup.tgz -C $D .
 echo "done: /tmp/bringup.tgz ($(stat -c %s /tmp/bringup.tgz) bytes)"
 echo "send:  Mac: nc -l 9000 > bringup.tgz     phone: /usr/local/sbin/busybox-bitra nc <mac-ip> 9000 < /tmp/bringup.tgz"
@@ -245,42 +245,6 @@ ExecStart=/usr/local/sbin/bitra-touch-resume
 
 [Install]
 WantedBy=graphical.target
-"""
-NET_WATCH = r"""#!/bin/sh
-# bitra: NetworkManager's l3cfg fails to install the subnet + default route on wlan0 ("unable to configure IPv4 route"),
-# although the kernel accepts the same routes from `ip`. Poll and repair: independent of NM dispatcher events.
-IF=wlan0
-while :; do
-    CIDR="$(ip -4 -o addr show dev $IF scope global 2>/dev/null | awk '{print $4; exit}')"
-    if [ -n "$CIDR" ]; then
-        IP="${CIDR%/*}"; P="${CIDR#*/}"
-        GW="$(nmcli -g IP4.GATEWAY device show $IF 2>/dev/null | head -n1)"
-        if [ -z "$(ip -4 route show dev $IF scope link)" ]; then
-            IFS=. read a b c d <<EOT
-$IP
-EOT
-            N=$(( (a<<24 | b<<16 | c<<8 | d) & ((0xFFFFFFFF << (32-P)) & 0xFFFFFFFF) ))
-            NET="$((N>>24&255)).$((N>>16&255)).$((N>>8&255)).$((N&255))/$P"
-            ip route replace "$NET" dev $IF proto kernel scope link src "$IP" metric 600 && echo "added $NET"
-        fi
-        if [ -n "$GW" ] && [ -z "$(ip -4 route show default dev $IF)" ]; then
-            ip route replace default via "$GW" dev $IF metric 600 && echo "added default via $GW"
-        fi
-    fi
-    sleep 3
-done
-"""
-NET_WATCH_UNIT = """[Unit]
-Description=bitra: repair missing wlan0 IPv4 routes
-After=NetworkManager.service
-
-[Service]
-ExecStart=/usr/local/sbin/bitra-net-watch
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
 """
 PLYMOUTH_DROPIN = "[Service]\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
@@ -371,7 +335,7 @@ def stage_rootfs():
                  ("bitra-bt-recover.service", BT_RECOVER_UNIT), ("bitra-modem-online.service", MODEM_ONLINE_UNIT),
                  ("preferred-hostname", DEVNAME + "\n"), ("bluebinder-dropin.conf", BLUEBINDER_DROPIN),
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
-                 ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("bitra-net-watch", NET_WATCH), ("bitra-net-watch.service", NET_WATCH_UNIT)):
+                 ("plymouth-dropin.conf", PLYMOUTH_DROPIN)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -380,10 +344,6 @@ def stage_rootfs():
     put(tmp / "bitra-modem-online", "/usr/local/sbin/bitra-modem-online", 0o100755)
     put(tmp / "bitra-bt-recover.service", "/etc/systemd/system/bitra-bt-recover.service", 0o100644)
     put(tmp / "bitra-modem-online.service", "/etc/systemd/system/bitra-modem-online.service", 0o100644)
-    put(tmp / "bitra-net-watch", "/usr/local/sbin/bitra-net-watch", 0o100755)
-    put(tmp / "bitra-net-watch.service", "/etc/systemd/system/bitra-net-watch.service", 0o100644)
-    cmds += ["cd /etc/systemd/system/multi-user.target.wants", "rm bitra-net-watch.service",
-             "symlink bitra-net-watch.service /etc/systemd/system/bitra-net-watch.service"]
     cmds += ["mkdir /etc/systemd/system/plymouth-quit.service.d"]
     put(tmp / "plymouth-dropin.conf", "/etc/systemd/system/plymouth-quit.service.d/bitra.conf", 0o100644)
     put(tmp / "bitra-touch-resume", "/usr/local/sbin/bitra-touch-resume", 0o100755)
