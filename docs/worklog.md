@@ -170,3 +170,7 @@
 - Droidian: user OK'd wiping Lineage. Verified official rootfs/initrd assets; plan in docs/14 (super.img via lpmake, userdata ext4 w/ rootfs.img, patched initrd).
 - Droidian install artifacts built (releases/droidian-install: boot/super/userdata). Mac test procedure docs/15. Test 1 (RAM-boot, no wipe) first.
 - 2026-11-18: Droidian boots to systemd userspace on bitra (RAM boot): plymouth logo, root shell over USB NCM.
+
+## 2026-11-18 — Droidian bring-up #3–#6
+- Phosh up; fixed touch (kernel abs axes + notify_panel_blank resume), audio (policy overlay + HAL rc), BT/modem boot services, device name, auto-brightness curve, persistent journal, Wi-Fi route workaround (bitra-net-watch). Details + open issues: docs/17-droidian-bringup-3-to-6.md.
+- Open: clean Wi-Fi route fix, Bluetooth Settings toggle/name, splash gap. Scripts: scripts/build_droidian_install.py, scripts/audio_sanitize.py.

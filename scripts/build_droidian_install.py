@@ -164,10 +164,133 @@ $A /system/bin/logcat -d -b all > $D/logcat.txt 2>&1
 $A /system/bin/getprop > $D/getprop.txt 2>&1
 $A /system/bin/ls -l /dev/dri /dev/kgsl-3d0 /dev/graphics > $D/gfxdev.txt 2>&1
 $A /system/bin/cat /proc/self/cgroup > $D/cgroup.txt 2>&1
+{ ip addr; echo; ip -4 route; echo; ip rule; echo; nmcli -f all device show wlan0; nmcli con show; } > $D/net.txt 2>&1
+{ rfkill list; echo; bluetoothctl show; echo; bluetoothctl devices; echo; systemctl status bluetooth bluebinder bitra-bt-recover --no-pager; } > $D/bt.txt 2>&1
+gsettings list-recursively org.gnome.settings-daemon.plugins.power > $D/power-gsettings.txt 2>&1
+journalctl -b --no-pager -u bitra-net-watch -u bitra-bt-recover -u bluetooth -u bluebinder > $D/bitra-units.txt 2>&1
 tar czf /tmp/bringup.tgz -C $D .
 echo "done: /tmp/bringup.tgz ($(stat -c %s /tmp/bringup.tgz) bytes)"
 echo "send:  Mac: nc -l 9000 > bringup.tgz     phone: /usr/local/sbin/busybox-bitra nc <mac-ip> 9000 < /tmp/bringup.tgz"
 """
+
+UDEV_RULES = """# bitra: device nodes libhybris (running as the droidian user) needs; normally shipped by the adaptation package
+ACTION=="add", KERNEL=="ion", MODE="0666"
+ACTION=="add", KERNEL=="kgsl-3d0", MODE="0666"
+ACTION=="add", KERNEL=="kgsl", MODE="0666"
+"""
+
+DEVNAME = "Droidian for Bitra"
+
+BT_RECOVER = r"""#!/bin/sh
+# bitra: bluetooth comes up before the vendor HAL has settled after boot (HAL restarts once) -> adapter stays down.
+# Retry power-on for up to ~2 min; if still failing, restart bluebinder+bluetooth once.
+for i in $(seq 1 24); do
+    bluetoothctl show 2>/dev/null | grep -q "Powered: yes" && exit 0
+    bluetoothctl power on >/dev/null 2>&1
+    sleep 5
+    if [ "$i" = 8 ]; then systemctl restart bluebinder; sleep 8; systemctl restart bluetooth; sleep 4; fi
+done
+exit 0
+"""
+BT_RECOVER_UNIT = """[Unit]
+Description=bitra: make sure Bluetooth powers on after boot
+After=bluetooth.service bluebinder.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bitra-bt-recover
+
+[Install]
+WantedBy=graphical.target
+"""
+MODEM_ONLINE = r"""#!/bin/sh
+# bitra: oFono modems come up Online=false at boot; set Online=true once the RIL modems exist
+for i in $(seq 1 60); do
+    ok=0
+    for m in /ril_0 /ril_1; do
+        busctl --system call org.ofono $m org.ofono.Modem SetProperty sv Online b true >/dev/null 2>&1 && ok=$((ok+1))
+    done
+    [ "$ok" -ge 1 ] && { sleep 10; for m in /ril_0 /ril_1; do busctl --system call org.ofono $m org.ofono.Modem SetProperty sv Online b true >/dev/null 2>&1; done; exit 0; }
+    sleep 5
+done
+exit 0
+"""
+MODEM_ONLINE_UNIT = """[Unit]
+Description=bitra: set cellular modems Online at boot
+After=ofono.service ofono2mm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bitra-modem-online
+
+[Install]
+WantedBy=graphical.target
+"""
+TOUCH_RESUME = r"""#!/bin/sh
+# bitra: early in boot (plymouth modeset) the Oplus touchpanel driver gets a blank=POWERDOWN notifier and is suspended;
+# no UNBLANK notifier follows, so touch stays dead until the first real screen off/on. Send the UNBLANK ourselves.
+N=/sys/kernel/oplus_display/notify_panel_blank
+[ -w "$N" ] || exit 0
+for i in $(seq 1 60); do systemctl is-active --quiet phosh && break; sleep 1; done
+for d in 6 10; do sleep $d; echo 1 > "$N"; done
+exit 0
+"""
+TOUCH_RESUME_UNIT = """[Unit]
+Description=bitra: resume the touchpanel after boot
+After=phosh.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bitra-touch-resume
+
+[Install]
+WantedBy=graphical.target
+"""
+NET_WATCH = r"""#!/bin/sh
+# bitra: NetworkManager's l3cfg fails to install the subnet + default route on wlan0 ("unable to configure IPv4 route"),
+# although the kernel accepts the same routes from `ip`. Poll and repair: independent of NM dispatcher events.
+IF=wlan0
+while :; do
+    CIDR="$(ip -4 -o addr show dev $IF scope global 2>/dev/null | awk '{print $4; exit}')"
+    if [ -n "$CIDR" ]; then
+        IP="${CIDR%/*}"; P="${CIDR#*/}"
+        GW="$(nmcli -g IP4.GATEWAY device show $IF 2>/dev/null | head -n1)"
+        if [ -z "$(ip -4 route show dev $IF scope link)" ]; then
+            IFS=. read a b c d <<EOT
+$IP
+EOT
+            N=$(( (a<<24 | b<<16 | c<<8 | d) & ((0xFFFFFFFF << (32-P)) & 0xFFFFFFFF) ))
+            NET="$((N>>24&255)).$((N>>16&255)).$((N>>8&255)).$((N&255))/$P"
+            ip route replace "$NET" dev $IF proto kernel scope link src "$IP" metric 600 && echo "added $NET"
+        fi
+        if [ -n "$GW" ] && [ -z "$(ip -4 route show default dev $IF)" ]; then
+            ip route replace default via "$GW" dev $IF metric 600 && echo "added default via $GW"
+        fi
+    fi
+    sleep 3
+done
+"""
+NET_WATCH_UNIT = """[Unit]
+Description=bitra: repair missing wlan0 IPv4 routes
+After=NetworkManager.service
+
+[Service]
+ExecStart=/usr/local/sbin/bitra-net-watch
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"""
+PLYMOUTH_DROPIN = "[Service]\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n"
+BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
+
+# Auto-brightness curve (lux -> %). The ALS sits under the OLED and reads low (~285 lux in a lit room, 6000+ with a torch),
+# the default curve (0..1000 lux in 5 steps) therefore stays far too dim.
+ALS_OVERRIDE = ("[org.gnome.settings-daemon.plugins.power]\n"
+                "ambient-brightness-points={1: 12, 20: 35, 100: 62, 300: 85, 1000: 95, 3000: 100}\n")
+
+TMPFILES = "w /sys/class/backlight/panel0-backlight/brightness - - - - 1600\n"
 
 ODM_OVERLAY_BLOCK = """
 # bitra: overlay with sanitized VINTF manifests (Android-11 libvintf cannot parse the stock Android-13 AIDL entries).
@@ -234,6 +357,8 @@ def stage_rootfs():
     (tmp / "bitra-usb-debug").write_text(USB_DEBUG_SH)
     (tmp / "bitra-collect").write_text(COLLECT_SH)
     (tmp / "bitra-usb-debug.service").write_text(USB_DEBUG_UNIT)
+    (tmp / "70-bitra.rules").write_text(UDEV_RULES)
+    (tmp / "bitra.conf").write_text(TMPFILES)
     shutil.copy(BUSYBOX, tmp / "busybox-bitra")
     cmds = []
 
@@ -242,10 +367,55 @@ def stage_rootfs():
         cmds.extend([f"cd {d}", f"rm {n}", f"write {local} {n}",
                      f"set_inode_field {n} mode 0{mode:o}", f"set_inode_field {n} uid 0", f"set_inode_field {n} gid 0"])
     cmds.append("mkdir /usr/local/sbin")
+    for n, t in (("bitra-bt-recover", BT_RECOVER), ("bitra-modem-online", MODEM_ONLINE),
+                 ("bitra-bt-recover.service", BT_RECOVER_UNIT), ("bitra-modem-online.service", MODEM_ONLINE_UNIT),
+                 ("preferred-hostname", DEVNAME + "\n"), ("bluebinder-dropin.conf", BLUEBINDER_DROPIN),
+                 ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
+                 ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("bitra-net-watch", NET_WATCH), ("bitra-net-watch.service", NET_WATCH_UNIT)):
+        (tmp / n).write_text(t)
+    cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
+    put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
+    put(tmp / "bluebinder-dropin.conf", "/etc/systemd/system/bluebinder.service.d/bitra.conf", 0o100644)
+    put(tmp / "bitra-bt-recover", "/usr/local/sbin/bitra-bt-recover", 0o100755)
+    put(tmp / "bitra-modem-online", "/usr/local/sbin/bitra-modem-online", 0o100755)
+    put(tmp / "bitra-bt-recover.service", "/etc/systemd/system/bitra-bt-recover.service", 0o100644)
+    put(tmp / "bitra-modem-online.service", "/etc/systemd/system/bitra-modem-online.service", 0o100644)
+    put(tmp / "bitra-net-watch", "/usr/local/sbin/bitra-net-watch", 0o100755)
+    put(tmp / "bitra-net-watch.service", "/etc/systemd/system/bitra-net-watch.service", 0o100644)
+    cmds += ["cd /etc/systemd/system/multi-user.target.wants", "rm bitra-net-watch.service",
+             "symlink bitra-net-watch.service /etc/systemd/system/bitra-net-watch.service"]
+    cmds += ["mkdir /etc/systemd/system/plymouth-quit.service.d"]
+    put(tmp / "plymouth-dropin.conf", "/etc/systemd/system/plymouth-quit.service.d/bitra.conf", 0o100644)
+    put(tmp / "bitra-touch-resume", "/usr/local/sbin/bitra-touch-resume", 0o100755)
+    put(tmp / "bitra-touch-resume.service", "/etc/systemd/system/bitra-touch-resume.service", 0o100644)
+    cmds += ["cd /etc/systemd/system/graphical.target.wants", "rm bitra-touch-resume.service",
+             "symlink bitra-touch-resume.service /etc/systemd/system/bitra-touch-resume.service"]
+    cmds += ["cd /etc/systemd/system/graphical.target.wants", "rm bitra-bt-recover.service", "rm bitra-modem-online.service",
+             "symlink bitra-bt-recover.service /etc/systemd/system/bitra-bt-recover.service",
+             "symlink bitra-modem-online.service /etc/systemd/system/bitra-modem-online.service"]
     put(tmp / "mount-android.sh", "/usr/sbin/mount-android.sh", 0o100755)
+    # Bluetooth name: set it explicitly (the computed default is lost via bluebinder -> remote shows the MAC address)
+    bt = debugfs_read(ROOTFS_SRC, "/etc/bluetooth/main.conf").decode()
+    if "[General]\n" not in bt:
+        sys.exit("bluetooth main.conf layout changed; update the patch")
+    (tmp / "main.conf").write_text(bt.replace("[General]\n", f"[General]\nName = {DEVNAME}\n", 1))
+    put(tmp / "main.conf", "/etc/bluetooth/main.conf", 0o100644)
+    mi = debugfs_read(ROOTFS_SRC, "/etc/machine-info").decode().rstrip("\n") + f'\nPRETTY_HOSTNAME="{DEVNAME}"\n'
+    (tmp / "machine-info").write_text(mi)
+    put(tmp / "machine-info", "/etc/machine-info", 0o100644)
+    # ofono2mm bug: KeyError 'PinRequired' when oFono has not published it yet -> modem stuck in "failed" (no IMEI/SIM in UI)
+    mm = debugfs_read(ROOTFS_SRC, "/usr/lib/ofono2mm/ofono2mm/mm_modem.py").decode()
+    bad = "self.ofono_interface_props['org.ofono.SimManager']['PinRequired'].value == 'none'"
+    good = "self.ofono_interface_props['org.ofono.SimManager'].get('PinRequired', Variant('s', 'none')).value == 'none'"
+    if bad not in mm:
+        sys.exit("ofono2mm layout changed; update the patch")
+    (tmp / "mm_modem.py").write_text(mm.replace(bad, good))
+    put(tmp / "mm_modem.py", "/usr/lib/ofono2mm/ofono2mm/mm_modem.py", 0o100644)
     put(tmp / "bitra-usb-debug", "/usr/sbin/bitra-usb-debug", 0o100755)
     put(tmp / "busybox-bitra", "/usr/local/sbin/busybox-bitra", 0o100755)
     put(tmp / "bitra-collect", "/usr/local/sbin/bitra-collect", 0o100755)
+    put(tmp / "70-bitra.rules", "/usr/lib/udev/rules.d/70-bitra.rules", 0o100644)
+    put(tmp / "bitra.conf", "/etc/tmpfiles.d/bitra.conf", 0o100644)
     put(tmp / "bitra-usb-debug.service", "/etc/systemd/system/bitra-usb-debug.service", 0o100644)
     # sanitized VINTF overlays (run scripts/vintf_sanitize.py first)
     ov = WORK / "overlays"
@@ -261,7 +431,6 @@ def stage_rootfs():
                 rel = f.relative_to(kroot)
                 if f.is_dir():
                     continue
-                parts = ("/etc/vintf/" + str(rel.relative_to("etc/vintf"))).split("/")
                 cur = base
                 for part in [x for x in (base + "/" + str(rel)).split("/")[:-1][len(base.split("/")):] if x]:
                     cur += "/" + part
@@ -270,6 +439,33 @@ def stage_rootfs():
                 d, n = os.path.split(base + "/" + str(rel))
                 cmds.extend([f"cd {d}", f"rm {n}", f"write {f} {n}", f"set_inode_field {n} mode 0100644",
                              f"set_inode_field {n} uid 0", f"set_inode_field {n} gid 0"])
+    # Wi-Fi: the qcacld driver requests wlan/qca_cld/WCNSS_qcom_cfg.ini; stock vendor points it at persist (absent here).
+    # ueventd searches /odm/firmware before /vendor/firmware, so provide the OEM config through the odm overlay.
+    wifi_ini = STOCK / "o-extract/odm/vendor/etc/wifi/WCNSS_qcom_cfg.ini"
+    if wifi_ini.is_file():
+        for d in ("/usr/lib/droid-odm-overlay", "/usr/lib/droid-odm-overlay/firmware", "/usr/lib/droid-odm-overlay/firmware/wlan",
+                  "/usr/lib/droid-odm-overlay/firmware/wlan/qca_cld"):
+            cmds.append(f"mkdir {d}")
+        cmds.extend(["cd /usr/lib/droid-odm-overlay/firmware/wlan/qca_cld", "rm WCNSS_qcom_cfg.ini",
+                     f"write {wifi_ini} WCNSS_qcom_cfg.ini", "set_inode_field WCNSS_qcom_cfg.ini mode 0100644",
+                     "set_inode_field WCNSS_qcom_cfg.ini uid 0", "set_inode_field WCNSS_qcom_cfg.ini gid 0"])
+    # gsettings override + recompiled schema cache (glib-compile-schemas on the host)
+    sd = tmp / "schemas"; shutil.rmtree(sd, ignore_errors=True); sd.mkdir()
+    sch = "/usr/share/glib-2.0/schemas"
+    for l in subprocess.run(["debugfs", "-R", f"ls -p {sch}", str(ROOTFS_SRC)], capture_output=True, text=True).stdout.splitlines():
+        n = l.split("/")[5] if l.count("/") >= 6 else ""
+        if n.endswith((".xml", ".override")):
+            (sd / n).write_bytes(debugfs_read(ROOTFS_SRC, f"{sch}/{n}"))
+    (sd / "90_bitra.gschema.override").write_text(ALS_OVERRIDE)
+    run(["glib-compile-schemas", "--strict", sd])
+    put(sd / "90_bitra.gschema.override", f"{sch}/90_bitra.gschema.override", 0o100644)
+    put(sd / "gschemas.compiled", f"{sch}/gschemas.compiled", 0o100644)
+    # persistent journal (crash analysis)
+    cmds.append("mkdir /var/log/journal")
+    # Droidian ships /usr/lib/systemd/journald.conf.d/10-journald-volatile.conf (Storage=volatile); same name in /etc wins
+    (tmp / "10-journald-volatile.conf").write_text("[Journal]\nStorage=persistent\nSyncIntervalSec=5\nSystemMaxUse=256M\n")
+    cmds.append("mkdir /etc/systemd/journald.conf.d")
+    put(tmp / "10-journald-volatile.conf", "/etc/systemd/journald.conf.d/10-journald-volatile.conf", 0o100644)
     cmds += ["cd /etc/systemd/system/sysinit.target.wants", "rm bitra-usb-debug.service",
              "symlink bitra-usb-debug.service /etc/systemd/system/bitra-usb-debug.service"]
     (WORK / "debugfs.cmds").write_text("\n".join(cmds) + "\n")
