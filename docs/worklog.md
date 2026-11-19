@@ -188,3 +188,4 @@
 - BLE advertising verified end to end (btmon all Success; LightBlue on a second phone sees the device). The old LE 0x12 rejection no longer reproduces after the powered_update_hci reorder.
 - New issue logged: intermittent missing USB NCM (Mac still sees composite gadget 1d6b:0104 'halium', 480 Mb/s, 0 mA required); a restart fixes it; to be investigated with the persistent journal.
 - Vibration fixed: CONFIG_LEDS_TRIGGER_TRANSIENT + aw8697 brightness_set_blocking (found via live dmesg logger: scheduling while atomic in transient_timer_function). RAM-boot verified by the user; flash pending. Debug helper /usr/local/sbin/bitra-dmesg-live is on the phone rootfs (temporary, remove).
+- Flashed boot kernel #11 (fc1f5207...: splash + transient LED trigger + aw8697 blocking brightness). Booted clean: phosh active, 0 atomic-sleep BUGs, 0 HAL aborts. Temporary dmesg logger removed from the phone.
