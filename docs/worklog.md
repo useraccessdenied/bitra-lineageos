@@ -183,3 +183,4 @@
 - Kernel: msm_lastclose() no-op so plymouth exit no longer blanks the panel (logo lit until ~12 s). RAM-booted, not flashed.
 - Rootfs: hwcomposer 20-phosh.conf replaced (Wants+Before instead of BindsTo) and phosh RestartSec=1s; 6/6 reboots reach phoc at ~15 s. A first attempt without Wants= left phosh unstarted (black screen).
 - Open: dark gap 12 s -> 25 s (composer takeover, Phosh start), notch status-bar icons.
+- Notch: added /var/lib/droidian/phosh-notch/qcom,kona-mtp.json (r=48 px circle at 82,60); status bar icons clear the camera hole. Live on the phone; in the build script for the next rootfs.

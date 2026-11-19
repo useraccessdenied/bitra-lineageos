@@ -264,6 +264,24 @@ HWC_PHOSH_DROPIN = """# bitra: Droidian's 20-phosh.conf has BindsTo=phosh.servic
 Wants=phosh.service
 Before=phosh.service
 """
+# Phosh/gmobile looks up the panel (and its cutouts) by device-tree compatible; this kernel's DT says
+# "qcom,kona-mtp". The base rootfs' 50-notch.conf already overlays /var/lib/droidian/phosh-notch.
+# Circle is deliberately larger than the camera hole (r=48 px at x=82,y=60): tuned on the device, r=28 and 38 still overlapped.
+NOTCH_JSON = """{
+  "name": "Realme GT Neo 2",
+  "x-res": 1080,
+  "y-res": 2400,
+  "corner-radii": [80, 80, 80, 80],
+  "width": 69,
+  "height": 153,
+  "cutouts" : [
+    {
+      "name": "camera",
+      "path": "M 34 60  a 48 48 0 1 0 96 0  a 48 48 0 1 0 -96 0  Z"
+    }
+  ]
+}
+"""
 PHOSH_RESTART_DROPIN = "[Service]\nRestartSec=1s\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 
@@ -354,7 +372,8 @@ def stage_rootfs():
                  ("preferred-hostname", DEVNAME + "\n"), ("bluebinder-dropin.conf", BLUEBINDER_DROPIN),
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
-                 ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN)):
+                 ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
+                 ("qcom,kona-mtp.json", NOTCH_JSON)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -370,6 +389,8 @@ def stage_rootfs():
     cmds += ["mkdir /etc/systemd/system/android-service@hwcomposer.service.d", "mkdir /etc/systemd/system/phosh.service.d"]
     put(tmp / "hwc-20-phosh.conf", "/etc/systemd/system/android-service@hwcomposer.service.d/20-phosh.conf", 0o100644)
     put(tmp / "phosh-zz-bitra.conf", "/etc/systemd/system/phosh.service.d/zz-bitra.conf", 0o100644)
+    cmds += ["mkdir /var/lib/droidian", "mkdir /var/lib/droidian/phosh-notch"]
+    put(tmp / "qcom,kona-mtp.json", "/var/lib/droidian/phosh-notch/qcom,kona-mtp.json", 0o100644)
     put(tmp / "bitra-touch-resume", "/usr/local/sbin/bitra-touch-resume", 0o100755)
     put(tmp / "bitra-touch-resume.service", "/etc/systemd/system/bitra-touch-resume.service", 0o100644)
     cmds += ["cd /etc/systemd/system/graphical.target.wants", "rm bitra-touch-resume.service",
