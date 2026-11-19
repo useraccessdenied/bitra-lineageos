@@ -1,0 +1,84 @@
+--- a/src/proximity.c
++++ b/src/proximity.c
+@@ -43,7 +43,9 @@
+   gboolean claimed;
+   PhoshSensorProxyManager *sensor_proxy_manager;
+   PhoshCallsManager *calls_manager;
+-  gboolean near;
++  gboolean near;            /* raw sensor state */
++  gboolean notified_near;   /* debounced state that was published via notify::near */
++  guint timeout_id;
+ 
+   GSettings      *settings;
+ } PhoshProximity;
+@@ -94,7 +96,9 @@
+ 
+   if (success == FALSE) {
+     if (!phosh_async_error_warn (err, "Failed to release proximity sensor")) {
++      g_clear_handle_id (&self->timeout_id, g_source_remove);
+       self->near = FALSE;
++      self->notified_near = FALSE;
+       g_object_notify_by_pspec (G_OBJECT (self), props[PROP_NEAR]);
+     }
+     return;
+@@ -103,7 +107,9 @@
+   g_debug ("Released proximity sensor");
+   self->claimed = FALSE;
+ 
++  g_clear_handle_id (&self->timeout_id, g_source_remove);
+   self->near = FALSE;
++  self->notified_near = FALSE;
+   g_object_notify_by_pspec (G_OBJECT (self), props[PROP_NEAR]);
+ }
+ 
+@@ -187,6 +193,31 @@
+ }
+ 
+ 
++/*
++ * The screen is blanked/unblanked based on the published near state. The display needs ~0.2-0.4 s
++ * to apply a power state change and a "far" arriving before the previous "near" has settled makes
++ * the power requests pile up (the screen then flickers on/off by itself). Like Android's
++ * DisplayPowerController we only act on a state that stayed stable for PROXIMITY_DEBOUNCE_MS.
++ */
++#define PROXIMITY_DEBOUNCE_MS 250
++
++static gboolean
++notify_near_state (PhoshProximity *self)
++{
++  self->timeout_id = 0;
++
++  /* A short near->far (or far->near) flicker leaves the published state unchanged: do nothing */
++  if (self->notified_near == self->near)
++    return G_SOURCE_REMOVE;
++
++  self->notified_near = self->near;
++  g_debug ("Proximity near published: %d", self->near);
++  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_NEAR]);
++
++  return G_SOURCE_REMOVE;
++}
++
++
+ static void
+ on_proximity_near_changed (PhoshProximity          *self,
+                            GParamSpec              *pspec,
+@@ -198,7 +229,8 @@
+   self->near = phosh_dbus_sensor_proxy_get_proximity_near (
+     PHOSH_DBUS_SENSOR_PROXY (self->sensor_proxy_manager));
+ 
+-  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_NEAR]);
++  g_clear_handle_id (&self->timeout_id, g_source_remove);
++  self->timeout_id = g_timeout_add (PROXIMITY_DEBOUNCE_MS, (GSourceFunc) notify_near_state, self);
+ 
+   g_debug ("Proximity near changed: %d", self->near);
+ }
+@@ -303,6 +335,8 @@
+      g_clear_object (&self->calls_manager);
+   }
+ 
++  g_clear_handle_id (&self->timeout_id, g_source_remove);
++
+   g_clear_object (&self->settings);
+ 
+   G_OBJECT_CLASS (phosh_proximity_parent_class)->dispose (object);
