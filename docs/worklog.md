@@ -186,3 +186,4 @@
 - Notch: added /var/lib/droidian/phosh-notch/qcom,kona-mtp.json (r=48 px circle at 82,60); status bar icons clear the camera hole. Live on the phone; in the build script for the next rootfs.
 - Vendor AIDL HAL aborts: root cause = deleted AIDL VINTF entries vs A11 servicemanager's declared-instance check; vintf_sanitize.py now rewrites <version> to 1.0 and keeps entries. 0 aborts live. Two dead-end variants recorded in docs/17. Rootfs/userdata rebuilt (userdata e40eb648...), not flashed.
 - BLE advertising verified end to end (btmon all Success; LightBlue on a second phone sees the device). The old LE 0x12 rejection no longer reproduces after the powered_update_hci reorder.
+- New issue logged: intermittent missing USB NCM (Mac still sees composite gadget 1d6b:0104 'halium', 480 Mb/s, 0 mA required); a restart fixes it; to be investigated with the persistent journal.
