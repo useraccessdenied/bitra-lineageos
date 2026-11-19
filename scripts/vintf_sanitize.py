@@ -5,8 +5,10 @@ Problem (bringup #2): Android 11's libvintf cannot parse `<hal format="aidl">...
 newer odm manifests ("Could not parse text "1" in element <version>"). The whole device manifest is then rejected,
 hwservicemanager considers NO HAL declared and every registerAsService() fails (-2147483648) -> display allocator/composer,
 keymaster, wifi, nfc, drm HALs abort.
-Fix: drop the AIDL <hal> entries (AIDL services register with the plain binder servicemanager, which does not consult
-VINTF on Android 11) and keep everything else. Output = overlay trees that the rootfs mounts over /odm and /vendor.
+Fix: rewrite the AIDL <version>N</version> as <version>1.0</version> (major.minor, which R's libvintf parses) and keep everything else.
+(An earlier version of this script deleted the AIDL <hal> entries, but Android 11's servicemanager DOES check that an AIDL
+instance is declared: every AIDL vendor HAL -- vibrator, lights, rpmh, cammidas, misc, ... -- then aborted with
+"Check failed: status == STATUS_OK", ~300 aborts per boot.) Output = overlay trees that the rootfs mounts over /odm and /vendor.
 
   python3 scripts/vintf_sanitize.py [--odm DIR] [--vendor DIR] [--out DIR]
 Inputs are the extracted stock trees (firmware/stock-a13/{o-extract/odm,v-extract/vendor}); stdlib only.
@@ -40,8 +42,13 @@ def sanitize_tree(src: Path, dst: Path, label: str, report):
             for hal in list(root.findall("hal")):
                 if hal.get("format") == "aidl":
                     name = (hal.findtext("name") or "?").strip()
+                    # Keep the entry (see module docstring), only make its <version> parseable for R's libvintf.
+                    # Tested on the device: version "1.0" + the original <fqname>. Dropping <version> or rewriting
+                    # <fqname> as <interface> made the WHOLE device manifest unparseable (everything fails, phosh dies).
+                    for v in hal.findall("version"):
+                        hal.remove(v)
+                    ET.SubElement(hal, "version").text = "1.0"
                     removed.append(name)
-                    root.remove(hal)
             if not removed:
                 continue
             out = dst / rel
@@ -49,7 +56,7 @@ def sanitize_tree(src: Path, dst: Path, label: str, report):
             ET.indent(tree) if hasattr(ET, "indent") else None
             tree.write(out, encoding="utf-8", xml_declaration=False)
             left = len(root.findall("hal"))
-            report.append(f"{label}:{rel}: removed {len(removed)} aidl hal(s) {removed}; {left} remain")
+            report.append(f"{label}:{rel}: kept {len(removed)} aidl hal(s) with version 1.0 {removed}; {left} hals total")
 
 
 def main():
