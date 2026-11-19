@@ -191,3 +191,4 @@
 - Flashed boot kernel #11 (fc1f5207...: splash + transient LED trigger + aw8697 blocking brightness). Booted clean: phosh active, 0 atomic-sleep BUGs, 0 HAL aborts. Temporary dmesg logger removed from the phone.
 - Network 2G-at-boot: ofono starts with TechnologyPreference umts; bitra-modem-online now sets lte after Online=true (live-tested, LTE stable for 150 s). gameopt HAL disabled via odm rc overlay in the image build. Temporary pollers /usr/local/sbin/bitra-net-poll remain on the phone rootfs (remove).
 - Disk full fixed live (e2fsprogs, userdata 14G->222G, rootfs.img 8G->48G, online) and in the build (initrd /dev/sd* resize case, ROOTFS_SIZE 32G, USERDATA_SIZE 40G). Rebuilt boot/rootfs/userdata: userdata 5c026408..., boot-gz b4fa5d52... (not flashed).
+- VoLTE step 1: IImsRadio manifest 1.6->1.7 in vintf_sanitize.py (live-tested: imsradio0/1 register). ofono IMS still not registered; needs ofono-binder-plugin-ext-qti from extra repos (awaiting approval).

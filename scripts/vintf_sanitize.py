@@ -49,6 +49,15 @@ def sanitize_tree(src: Path, dst: Path, label: str, report):
                         hal.remove(v)
                     ET.SubElement(hal, "version").text = "1.0"
                     removed.append(name)
+            # qcrild registers vendor.qti.hardware.radio.ims@1.7::IImsRadio/imsradio{0,1}, but the stock odm manifests only
+            # declare 1.6; Android 11's hwservicemanager then refuses it ("must be in VINTF manifest") and IMS/VoLTE is dead.
+            # A declared 1.7 also satisfies requests for 1.6.
+            ims_bumped = False
+            for hal in root.findall("hal"):
+                if (hal.findtext("name") or "").strip() == "vendor.qti.hardware.radio.ims":
+                    for v in hal.findall("version"):
+                        if (v.text or "").strip() == "1.6":
+                            v.text = "1.7"; ims_bumped = True; removed.append("radio.ims 1.6->1.7")
             if not removed:
                 continue
             out = dst / rel
