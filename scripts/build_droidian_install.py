@@ -204,13 +204,26 @@ ExecStart=/usr/local/sbin/bitra-bt-recover
 WantedBy=graphical.target
 """
 MODEM_ONLINE = r"""#!/bin/sh
-# bitra: oFono modems come up Online=false at boot; set Online=true once the RIL modems exist
+# bitra: oFono modems come up Online=false at boot; set Online=true once the RIL modems exist.
+# Then force the preferred radio technology: at boot oFono reports TechnologyPreference "umts" (2G/3G, no LTE) no
+# matter what is saved, the modem first registers on LTE and then falls back to GSM ~15 s later. Apply "lte"
+# (= LTE preferred, falling back to 3G/2G), or whatever /etc/bitra-modem-pref contains (any|gsm|umts|lte).
+PREF=lte
+[ -r /etc/bitra-modem-pref ] && PREF=$(head -n1 /etc/bitra-modem-pref)
 for i in $(seq 1 60); do
     ok=0
     for m in /ril_0 /ril_1; do
         busctl --system call org.ofono $m org.ofono.Modem SetProperty sv Online b true >/dev/null 2>&1 && ok=$((ok+1))
     done
-    [ "$ok" -ge 1 ] && { sleep 10; for m in /ril_0 /ril_1; do busctl --system call org.ofono $m org.ofono.Modem SetProperty sv Online b true >/dev/null 2>&1; done; exit 0; }
+    if [ "$ok" -ge 1 ]; then
+        sleep 10
+        for m in /ril_0 /ril_1; do busctl --system call org.ofono $m org.ofono.Modem SetProperty sv Online b true >/dev/null 2>&1; done
+        for j in $(seq 1 30); do
+            busctl --system call org.ofono /ril_0 org.ofono.RadioSettings SetProperty sv TechnologyPreference s "$PREF" >/dev/null 2>&1 && break
+            sleep 2
+        done
+        exit 0
+    fi
     sleep 5
 done
 exit 0
@@ -281,6 +294,17 @@ NOTCH_JSON = """{
     }
   ]
 }
+"""
+# Oplus game optimiser HAL: SIGSEGV in FreqControl::releaseCpuAll() right at start, restarted by init every ~10 s
+# (hundreds of crashes per boot). Nothing here uses it; same service block as the stock rc plus `disabled`
+# (the overlay replaces the stock odm rc of the same name).
+GAMEOPT_RC = """service gameopt_hal_service-1-0 /odm/bin/hw/vendor.oplus.hardware.gameopt-service
+    class hal
+    user system
+    group system readproc root
+    capabilities SYS_NICE
+    interface vendor.oplus.hardware.gameopt.IGameOptHalService/default
+    disabled
 """
 PHOSH_RESTART_DROPIN = "[Service]\nRestartSec=1s\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
@@ -373,7 +397,7 @@ def stage_rootfs():
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
                  ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
-                 ("qcom,kona-mtp.json", NOTCH_JSON)):
+                 ("qcom,kona-mtp.json", NOTCH_JSON), ("gameopt.rc", GAMEOPT_RC)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -454,6 +478,9 @@ def stage_rootfs():
         cmds.extend(["cd /usr/lib/droid-odm-overlay/firmware/wlan/qca_cld", "rm WCNSS_qcom_cfg.ini",
                      f"write {wifi_ini} WCNSS_qcom_cfg.ini", "set_inode_field WCNSS_qcom_cfg.ini mode 0100644",
                      "set_inode_field WCNSS_qcom_cfg.ini uid 0", "set_inode_field WCNSS_qcom_cfg.ini gid 0"])
+    for d in ("/usr/lib/droid-odm-overlay", "/usr/lib/droid-odm-overlay/etc", "/usr/lib/droid-odm-overlay/etc/init"):
+        cmds.append(f"mkdir {d}")
+    put(tmp / "gameopt.rc", "/usr/lib/droid-odm-overlay/etc/init/vendor.oplus.hardware.gameopt-service.rc", 0o100644)
     # gsettings override + recompiled schema cache (glib-compile-schemas on the host)
     sd = tmp / "schemas"; shutil.rmtree(sd, ignore_errors=True); sd.mkdir()
     sch = "/usr/share/glib-2.0/schemas"
