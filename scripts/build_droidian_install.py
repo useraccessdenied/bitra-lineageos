@@ -306,6 +306,9 @@ GAMEOPT_RC = """service gameopt_hal_service-1-0 /odm/bin/hw/vendor.oplus.hardwar
     interface vendor.oplus.hardware.gameopt.IGameOptHalService/default
     disabled
 """
+# Droidian's GSI /system/etc/init/init.disabled.rc replaces vendor.imsdatadaemon and vendor.ims_rtp_daemon by dummy
+# *_HYBRIS_DISABLED binaries, so IMS never registers (no VoLTE). Same file minus those two blocks, via the system overlay.
+INIT_DISABLED_RC = '# Copyright (C) 2020 - Dreemurrs Embedded Labs\n#\n# These services are disabled due to them being unnecessary critical process\n# and crash loop.\n\nservice lmkd lmkd_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.audio-hal-2-0 android.hardware.audio@2.0-service_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.audio-hal android.hardware.audio.service_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.usb-hal-1-1 android.hardware.usb@1.1-service_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\n# Disable console as it conflicts with the rootfs console\nservice console /system/bin/sh_HYBRIS_DISABLED\n    disabled\n    override\n'
 PHOSH_RESTART_DROPIN = "[Service]\nRestartSec=1s\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 
@@ -397,7 +400,7 @@ def stage_rootfs():
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
                  ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
-                 ("qcom,kona-mtp.json", NOTCH_JSON), ("gameopt.rc", GAMEOPT_RC)):
+                 ("qcom,kona-mtp.json", NOTCH_JSON), ("gameopt.rc", GAMEOPT_RC), ("init.disabled.rc", INIT_DISABLED_RC)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -481,6 +484,9 @@ def stage_rootfs():
     for d in ("/usr/lib/droid-odm-overlay", "/usr/lib/droid-odm-overlay/etc", "/usr/lib/droid-odm-overlay/etc/init"):
         cmds.append(f"mkdir {d}")
     put(tmp / "gameopt.rc", "/usr/lib/droid-odm-overlay/etc/init/vendor.oplus.hardware.gameopt-service.rc", 0o100644)
+    for d in ("/usr/lib/droid-system-overlay", "/usr/lib/droid-system-overlay/etc", "/usr/lib/droid-system-overlay/etc/init"):
+        cmds.append(f"mkdir {d}")
+    put(tmp / "init.disabled.rc", "/usr/lib/droid-system-overlay/etc/init/init.disabled.rc", 0o100644)
     # gsettings override + recompiled schema cache (glib-compile-schemas on the host)
     sd = tmp / "schemas"; shutil.rmtree(sd, ignore_errors=True); sd.mkdir()
     sch = "/usr/share/glib-2.0/schemas"
