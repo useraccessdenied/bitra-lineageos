@@ -32,8 +32,8 @@ KERNEL = ROOT / "roms/droidian/kernel-out/arch/arm64/boot/Image"
 DTB = ROOT / "releases/droidian-kernel/dtb"
 BUSYBOX = ROOT / "roms/lineageos/a17/kernel/realme/sm8250/KernelSU/userspace/ksud/bin/aarch64/busybox"
 MKBOOTIMG = ROOT / "roms/lineageos/a16/system/tools/mkbootimg/mkbootimg.py"
-ROOTFS_SIZE = "8G"     # same as Droidian's recovery installer
-USERDATA_SIZE = "14G"  # grows to fill the partition on first boot (initrd resize2fs)
+ROOTFS_SIZE = "32G"    # sparse; Droidian's installer uses 8G, but with GNOME runtimes preinstalled that is 100% full on day one
+USERDATA_SIZE = "40G"  # sparse; the initrd should grow it to the partition on first boot (see halium resize patch below)
 
 CMDLINE = ("console=ttyMSM0,115200n8 earlycon=msm_geni_serial,0xa90000 androidboot.hardware=qcom "
            "androidboot.console=ttyMSM0 androidboot.memcg=1 lpm_levels.sleep_disabled=1 "
@@ -598,6 +598,19 @@ def stage_boot():
             e[2] = s.encode(); hit = True
     if not hit:
         sys.exit("scripts/panic/telnet not found in initramfs")
+    # resize_userdata_if_needed() only knows /dev/mmcblk* and /dev/disk*, but mountroot resolves the partition with
+    # `readlink -f` -> /dev/sda11 on this UFS phone, so the userdata filesystem was never grown (stayed 14 GB of 242 GB).
+    sd_case = ("\t/dev/sd*)\n\t\tpblocks=$(grep -w ${path#/dev/} /proc/partitions | awk {'print $3'})\n\t\t;;\n")
+    hit = False
+    for e in ents:
+        if e[0] == "scripts/halium":
+            s = e[2].decode()
+            assert "\t/dev/disk*)\n" in s, "halium resize_userdata_if_needed layout changed"
+            if "/dev/sd*)" not in s:
+                s = s.replace("\t/dev/disk*)\n", sd_case + "\t/dev/disk*)\n", 1)
+            e[2] = s.encode(); hit = True
+    if not hit:
+        sys.exit("scripts/halium not found in initramfs")
     # add the early gadget as the FIRST init-premount script
     tmpl = next(e for e in ents if e[0] == "scripts/init-premount/dropbear")
     f = list(tmpl[1]); f[0] = max(e[1][0] for e in ents) + 1; f[4] = 1
