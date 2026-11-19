@@ -96,6 +96,8 @@ def main():
             r = sh(["apt-get", "install", "-y", "--no-install-recommends", "-o", "Dpkg::Options::=--force-confold"]
                    + [f"{p}={v}" for p, v in todo.items()], timeout=900)
             print(r.stdout[-400:])
+            # the stock Droidian pin (1002) beats a locally newer package: without a hold a plain `apt upgrade` downgrades them
+            sh(["apt-mark", "hold"] + list(PKGS))
     else:
         print("ok      packages already at the wanted versions")
     # 3. ofono config

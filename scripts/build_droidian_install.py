@@ -317,6 +317,56 @@ GAMEOPT_RC = """service gameopt_hal_service-1-0 /odm/bin/hw/vendor.oplus.hardwar
 # Droidian's GSI /system/etc/init/init.disabled.rc replaces vendor.imsdatadaemon and vendor.ims_rtp_daemon by dummy
 # *_HYBRIS_DISABLED binaries, so IMS never registers (no VoLTE). Same file minus those two blocks, via the system overlay.
 INIT_DISABLED_RC = '# Copyright (C) 2020 - Dreemurrs Embedded Labs\n#\n# These services are disabled due to them being unnecessary critical process\n# and crash loop.\n\nservice lmkd lmkd_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.audio-hal-2-0 android.hardware.audio@2.0-service_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.audio-hal android.hardware.audio.service_DISABLED\n    disabled\n    oneshot\n    override\n\nservice vendor.usb-hal-1-1 android.hardware.usb@1.1-service_HYBRIS_DISABLED\n    disabled\n    oneshot\n    override\n\n# Disable console as it conflicts with the rootfs console\nservice console /system/bin/sh_HYBRIS_DISABLED\n    disabled\n    override\n'
+# Offline first-boot installer for the .debs built/fetched by build_droidian_debs.py / fetch_droidian_debs.py (patched phosh,
+# VoLTE libgbinder/ofono/IMS plugin). dpkg -i of the whole set at once, services are not started (policy-rc.d), packages are put
+# on hold: the stock Droidian repo pin (1002) is HIGHER than a local install, so a plain `apt upgrade` would silently downgrade them.
+INSTALL_DEBS = r"""#!/bin/sh
+D=/usr/share/bitra/debs
+ST=/var/lib/bitra/debs.stamp
+LOG=/var/log/bitra-install-debs.log
+ls $D/*.deb >/dev/null 2>&1 || exit 0
+H=$(cat $D/*.deb | sha256sum | cut -d' ' -f1)
+[ -f $ST ] && [ "$(cat $ST)" = "$H" ] && exit 0
+mkdir -p /var/lib/bitra
+{
+  echo "== $(date) installing $(ls $D | wc -l) packages"
+  printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d; chmod 755 /usr/sbin/policy-rc.d
+  if DEBIAN_FRONTEND=noninteractive dpkg -i --force-confold $D/*.deb; then
+    echo "$H" > $ST
+    for f in $D/*.deb; do dpkg-deb -f "$f" Package; done | xargs apt-mark hold
+    echo "ok"
+  else
+    echo "dpkg FAILED; keeping the packages that were installed with the image"
+  fi
+  rm -f /usr/sbin/policy-rc.d
+} >> $LOG 2>&1
+exit 0
+"""
+INSTALL_DEBS_UNIT = """[Unit]
+Description=bitra: install the bundled .debs (patched phosh, VoLTE stack) once
+DefaultDependencies=no
+After=local-fs.target
+Before=sysinit.target ofono.service ModemManager.service phosh.service bluetooth.service
+ConditionPathExists=/usr/share/bitra/debs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/bitra-install-debs
+TimeoutStartSec=300
+
+[Install]
+WantedBy=sysinit.target
+"""
+OFONO_BINDER_CONF = """[Settings]
+ExpectSlots = slot1
+
+[slot1]
+path = /ril_0
+slot = 0
+extPlugin = qti
+"""
+EMBED_DEB_PREFIXES = ("phosh_", "phosh-common_", "phosh-mobile-tweaks_", "libgbinder_", "libgbinder-tools_", "libgbinder-radio_",
+                      "libofonobinderpluginext_", "ofono-binder-plugin_", "ofono-binder-plugin-ext-qti_", "ofono_", "ofono-scripts_")
 PHOSH_RESTART_DROPIN = "[Service]\nRestartSec=1s\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 
@@ -412,7 +462,8 @@ def stage_rootfs():
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
                  ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
-                 ("qcom,kona-mtp.json", NOTCH_JSON), ("gameopt.rc", GAMEOPT_RC), ("init.disabled.rc", INIT_DISABLED_RC)):
+                 ("qcom,kona-mtp.json", NOTCH_JSON), ("bitra-install-debs", INSTALL_DEBS),
+                 ("bitra-install-debs.service", INSTALL_DEBS_UNIT), ("binder.conf", OFONO_BINDER_CONF), ("gameopt.rc", GAMEOPT_RC), ("init.disabled.rc", INIT_DISABLED_RC)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -430,6 +481,19 @@ def stage_rootfs():
     put(tmp / "phosh-zz-bitra.conf", "/etc/systemd/system/phosh.service.d/zz-bitra.conf", 0o100644)
     cmds += ["mkdir /var/lib/droidian", "mkdir /var/lib/droidian/phosh-notch"]
     put(tmp / "qcom,kona-mtp.json", "/var/lib/droidian/phosh-notch/qcom,kona-mtp.json", 0o100644)
+    put(tmp / "bitra-install-debs", "/usr/local/sbin/bitra-install-debs", 0o100755)
+    put(tmp / "bitra-install-debs.service", "/etc/systemd/system/bitra-install-debs.service", 0o100644)
+    cmds += ["cd /etc/systemd/system/sysinit.target.wants", "rm bitra-install-debs.service",
+             "symlink bitra-install-debs.service /etc/systemd/system/bitra-install-debs.service"]
+    debs = sorted(f for f in (OUT / "debs").glob("*.deb") if f.name.startswith(EMBED_DEB_PREFIXES)) if (OUT / "debs").is_dir() else []
+    if debs:
+        cmds += ["mkdir /usr/share/bitra", "mkdir /usr/share/bitra/debs"]
+        for f in debs:
+            put(f, "/usr/share/bitra/debs/" + f.name, 0o100644)
+        put(tmp / "binder.conf", "/etc/ofono/binder.conf", 0o100644)   # extPlugin = qti (needs the bundled IMS plugin)
+        print(f"embedding {len(debs)} .debs")
+    else:
+        print("WARNING: no .debs in releases/droidian-install/debs (run build_droidian_debs.py / fetch_droidian_debs.py): no VoLTE, unpatched phosh")
     put(tmp / "bitra-touch-resume", "/usr/local/sbin/bitra-touch-resume", 0o100755)
     put(tmp / "bitra-touch-resume.service", "/etc/systemd/system/bitra-touch-resume.service", 0o100644)
     cmds += ["cd /etc/systemd/system/graphical.target.wants", "rm bitra-touch-resume.service",
