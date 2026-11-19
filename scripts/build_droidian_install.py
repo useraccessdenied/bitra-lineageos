@@ -222,6 +222,14 @@ for i in $(seq 1 60); do
             busctl --system call org.ofono /ril_0 org.ofono.RadioSettings SetProperty sv TechnologyPreference s "$PREF" >/dev/null 2>&1 && break
             sleep 2
         done
+        # ofono2mm (runs as ModemManager.service) sometimes starts before ofono has the SIM and then stays in
+        # "failed / sim-missing" for good (Settings shows no mobile network although ofono is registered): restart it once.
+        for j in $(seq 1 10); do
+            st=$(mmcli -m 0 -K 2>/dev/null | sed -n 's/^modem.generic.state *: *//p')
+            [ -n "$st" ] && [ "$st" != "failed" ] && exit 0
+            [ "$st" = "failed" ] && { systemctl restart ModemManager; exit 0; }
+            sleep 3
+        done
         exit 0
     fi
     sleep 5
@@ -315,7 +323,11 @@ BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 # Auto-brightness curve (lux -> %). The ALS sits under the OLED and reads low (~285 lux in a lit room, 6000+ with a torch),
 # the default curve (0..1000 lux in 5 steps) therefore stays far too dim.
 ALS_OVERRIDE = ("[org.gnome.settings-daemon.plugins.power]\n"
-                "ambient-brightness-points={1: 12, 20: 35, 100: 62, 300: 85, 1000: 95, 3000: 100}\n")
+                "ambient-brightness-points={1: 12, 20: 35, 100: 62, 300: 85, 1000: 95, 3000: 100}\n"
+                # Phosh blanks the screen on proximity during calls; a quick near->far (<0.25 s) races the panel power
+                # sequence and the screen then flickers/sticks black (docs/17). Off until that race is fixed.
+                "\n[mobi.phosh.shell.proximity]\n"
+                "enable-proximity-sensor=false\n")
 
 TMPFILES = "w /sys/class/backlight/panel0-backlight/brightness - - - - 1600\n"
 
