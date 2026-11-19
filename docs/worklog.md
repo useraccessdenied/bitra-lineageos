@@ -178,3 +178,8 @@
 ## 2026-11-18 (late) — bitra-agent + Wi-Fi route root cause
 - bitra-agent (outside the repo, ~/projects/bitra-agent) drives the Mac over ssh: state/collect/live-patch/to-fastboot/ramboot verified on the phone; stdin swallow by lxc-attach fixed inside it.
 - Wi-Fi routes: NM sends RTA_GATEWAY 0.0.0.0, the 4.19 tree rejects it (-ENETUNREACH) without a default route. Kernel fix in fib_frontend.c, verified with 2 RAM boots. Details in docs/17.
+
+## 2026-11-19 (splash, slow boot)
+- Kernel: msm_lastclose() no-op so plymouth exit no longer blanks the panel (logo lit until ~12 s). RAM-booted, not flashed.
+- Rootfs: hwcomposer 20-phosh.conf replaced (Wants+Before instead of BindsTo) and phosh RestartSec=1s; 6/6 reboots reach phoc at ~15 s. A first attempt without Wants= left phosh unstarted (black screen).
+- Open: dark gap 12 s -> 25 s (composer takeover, Phosh start), notch status-bar icons.

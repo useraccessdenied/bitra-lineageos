@@ -256,6 +256,15 @@ OriginalName=wlan0 p2p0 wifi-aware0
 NamePolicy=keep
 """
 PLYMOUTH_DROPIN = "[Service]\nExecStart=\nExecStart=-/usr/bin/plymouth quit --retain-splash\n"
+HWC_PHOSH_DROPIN = """# bitra: Droidian's 20-phosh.conf has BindsTo=phosh.service (starts phosh, and stops the composer when phosh
+# stops). Phosh's first start often exits within ~30 ms; the BindsTo stop then killed the composer and the
+# restarted android-service waited its full 60 s (phoc at ~80 s instead of ~15 s). Wants= still starts phosh
+# (BindsTo implied it) -- dropping BindsTo without a Wants= leaves phosh never started (black screen).
+[Unit]
+Wants=phosh.service
+Before=phosh.service
+"""
+PHOSH_RESTART_DROPIN = "[Service]\nRestartSec=1s\n"
 BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 
 # Auto-brightness curve (lux -> %). The ALS sits under the OLED and reads low (~285 lux in a lit room, 6000+ with a torch),
@@ -344,7 +353,8 @@ def stage_rootfs():
                  ("bitra-bt-recover.service", BT_RECOVER_UNIT), ("bitra-modem-online.service", MODEM_ONLINE_UNIT),
                  ("preferred-hostname", DEVNAME + "\n"), ("bluebinder-dropin.conf", BLUEBINDER_DROPIN),
                  ("bitra-touch-resume", TOUCH_RESUME), ("bitra-touch-resume.service", TOUCH_RESUME_UNIT),
-                 ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK)):
+                 ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
+                 ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -357,6 +367,9 @@ def stage_rootfs():
     put(tmp / "10-bitra-wlan.link", "/etc/systemd/network/10-bitra-wlan.link", 0o100644)
     cmds += ["mkdir /etc/systemd/system/plymouth-quit.service.d"]
     put(tmp / "plymouth-dropin.conf", "/etc/systemd/system/plymouth-quit.service.d/bitra.conf", 0o100644)
+    cmds += ["mkdir /etc/systemd/system/android-service@hwcomposer.service.d", "mkdir /etc/systemd/system/phosh.service.d"]
+    put(tmp / "hwc-20-phosh.conf", "/etc/systemd/system/android-service@hwcomposer.service.d/20-phosh.conf", 0o100644)
+    put(tmp / "phosh-zz-bitra.conf", "/etc/systemd/system/phosh.service.d/zz-bitra.conf", 0o100644)
     put(tmp / "bitra-touch-resume", "/usr/local/sbin/bitra-touch-resume", 0o100755)
     put(tmp / "bitra-touch-resume.service", "/etc/systemd/system/bitra-touch-resume.service", 0o100644)
     cmds += ["cd /etc/systemd/system/graphical.target.wants", "rm bitra-touch-resume.service",
