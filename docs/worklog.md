@@ -205,3 +205,9 @@
 - Image changes for the next flash: proximity blank back ON by default (debounce patch), audiosystem-passthrough PartOf=pulseaudio (restart together), pid_max cap, gameopt disabled, audio device-node udev rules. Rebuilt rootfs/userdata (8aba139b...) and boot (boot-gz b4fa5d52...); flashing boot + userdata (wipe) requested by the user.
 - TODO later (user will test): incoming calls; 5G in SA and NSA modes. State: Settings now offers 5G (ofono 1.29 + qti plugin report `nr`; ModemManager `allowed 2g,3g,4g,5g; preferred 5g`), the modem accepts it but registers as `lte` on Airtel where a second Android phone shows 5G. Unknown whether NSA is active but invisible (ofono/MM report NSA as lte) or not enabled (stock Android may send a Qualcomm NR config via qtiradio); speed test vs LTE decides; next step would be ofono binder debug of the data registration NR indicators. bitra-modem-online still forces TechnologyPreference lte at boot: revisit once 5G works.
 - Brightness: kernel scales the 0..255 backlight range to the panel (cap 1500, mix 300, runtime-tunable); verified with ramboot of boot-gz a6587bc6. Rebuilt userdata 47504db9..., boot-gz a6587bc6...; user flashes them himself (upload from this host is only ~0.5 MB/s).
+
+## 2026-11-21 — mainline Linux work moved to its own repos
+Mainline 7.2.0 RAM-boots on the phone with a USB-NCM shell (ABL DTB shim, efifb console, watchdog petting). All further mainline work lives in:
+- https://github.com/useraccessdenied/bitra-mainline (tooling, docs 18–20, patches)
+- https://github.com/useraccessdenied/linux-sm8250-realme-bitra (kernel fork, branch `bitra`)
+Local checkout of the kernel stays at roms/mainline/linux (untracked here). This repo keeps only the Droidian/LineageOS work.
