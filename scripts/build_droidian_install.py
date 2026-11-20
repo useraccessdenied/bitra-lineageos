@@ -177,6 +177,10 @@ UDEV_RULES = """# bitra: device nodes libhybris (running as the droidian user) n
 ACTION=="add", KERNEL=="ion", MODE="0666"
 ACTION=="add", KERNEL=="kgsl-3d0", MODE="0666"
 ACTION=="add", KERNEL=="kgsl", MODE="0666"
+# the audio HAL inside PulseAudio loads the ACDB calibration through this node (EACCES = no calibration at all, incl. voice)
+ACTION=="add", KERNEL=="msm_audio_cal", GROUP="audio", MODE="0660"
+ACTION=="add", KERNEL=="msm_rtac", GROUP="audio", MODE="0660"
+ACTION=="add", KERNEL=="diag", GROUP="audio", MODE="0660"
 """
 
 DEVNAME = "Droidian for Bitra"

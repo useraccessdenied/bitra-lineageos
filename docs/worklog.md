@@ -196,3 +196,8 @@
 - VoLTE call test (198 IVR): call connects over IMS and stays on LTE, downlink fine, uplink silent; DSP voice session setup fails with missing voice cal because the PulseAudio-hosted audio HAL has no ACDB init. Also intermittent black screen after proximity blank. Both logged in docs/17, not fixed.
 - Proximity black-screen: Phosh (Droidian snapshot) blanks on near during calls (gsetting mobi.phosh.shell.proximity enable-proximity-sensor, default true); fast near->far (<0.25 s) races the panel power sequence and starts a 0.54 s ON/OFF loop. Mitigation: setting false (live; image override pending). Experiments proved Android side innocent.
 - Built patched phosh 0.49 (+bitra1, proximity debounce) in a podman arm64 container; fetched+verified VoLTE debs; image now embeds all 11 debs with a first-boot dpkg installer + holds (userdata 14638bb6...). Not flashed/tested: Mac was turned off. Next: install patched phosh on the phone, re-enable proximity blank, fast-wave test; then clean-install test.
+
+## 2026-11-20 (evening)
+- Patched Phosh 0.49+bitra1 (250 ms proximity debounce) installed live and held; fast-wave test on a real call: screen never stuck (26 near/far, 18 blank/18 wake, ended lit). Image default for enable-proximity-sensor still false -> to flip to true in next image build.
+- VoLTE two-way audio fixed: /dev/msm_audio_cal, msm_rtac, diag were root-only for the PulseAudio HAL (ACDB init failed); udev rules added (live + build_droidian_install.py). See docs/17.
+- User installed Waydroid via Settings (second Android container, interferes with audio experiments); stopped it for testing.
