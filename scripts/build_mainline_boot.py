@@ -19,9 +19,25 @@ ROOT = b.ROOT
 b.INIT = b.INIT.replace(
     'while true; do log "alive $(cat /proc/uptime | cut -d\' \' -f1)s"; sleep 10; done',
     'while true; do sleep 600; log "alive $(cat /proc/uptime | cut -d\' \' -f1)s"; done')
+# quiet kernel log + status lines at KERN_CRIT so they show on the (very slow) panel console;
+# pet the ABL-armed watchdog from the first instruction of init; report USB bring-up state
+b.INIT = b.INIT.replace('log() { echo "bitra-debug: $*" > /dev/kmsg; echo "bitra-debug: $*"; }',
+    'log() { echo "<2>bitra-debug: $*" > /dev/kmsg; }')
+b.INIT = b.INIT.replace('/bin/busybox --install -s /bin 2>/dev/null',
+    '/bin/busybox --install -s /bin 2>/dev/null\n'
+    'mount -t devtmpfs devtmpfs /dev 2>/dev/null\n'
+    '( while :; do echo . > /dev/watchdog0 2>/dev/null || echo . > /dev/watchdog 2>/dev/null; sleep 4; done ) &', 1)
+b.INIT = b.INIT.replace('UDC=$(ls /sys/class/udc | head -n1)',
+    'mount -t debugfs none /sys/kernel/debug 2>/dev/null\n'
+    'log "wdt: $(ls /dev/watchdog* 2>&1 | tr "\\n" " ")"\n'
+    'log "udc: $(ls /sys/class/udc 2>&1)"\n'
+    'for l in $(cat /sys/kernel/debug/devices_deferred 2>/dev/null | tr "\\t" "~" | head -12); do log "deferred: $l"; done\n'
+    'UDC=$(ls /sys/class/udc | head -n1)', 1)
+# the agent speaks telnet (IAC) on :23, like the Droidian initrd's busybox telnetd; plain `nc -e` closes on it
+b.INIT = b.INIT.replace("nc -ll -p 23 -e /bin/sh &", "telnetd -b 0.0.0.0:23 -l /bin/sh")
 MAIN = ROOT / "roms/mainline/out/arch/arm64/boot"
 name = sys.argv[1]
-extra = "clk_ignore_unused pd_ignore_unused ignore_loglevel panic=0 consoleblank=0 earlycon=efifb keep_bootcon"
+extra = "clk_ignore_unused pd_ignore_unused panic=0 consoleblank=0 earlycon=efifb keep_bootcon fw_devlink.sync_state=strict loglevel=4"
 rest = sys.argv[2:]
 if rest[:1] == ["--cmdline-extra"]:
     extra = rest[1]
