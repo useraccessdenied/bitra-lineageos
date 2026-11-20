@@ -382,10 +382,13 @@ BLUEBINDER_DROPIN = "[Service]\nRestartSec=3\n"
 # the default curve (0..1000 lux in 5 steps) therefore stays far too dim.
 ALS_OVERRIDE = ("[org.gnome.settings-daemon.plugins.power]\n"
                 "ambient-brightness-points={1: 12, 20: 35, 100: 62, 300: 85, 1000: 95, 3000: 100}\n"
-                # Phosh blanks the screen on proximity during calls; a quick near->far (<0.25 s) races the panel power
-                # sequence and the screen then flickers/sticks black (docs/17). Off until that race is fixed.
+                # Proximity screen blank during calls: ON again, the 250 ms debounce patch (patches/phosh-0.49, bundled as
+                # phosh+bitra1 .debs) fixed the near->far race (docs/17).
                 "\n[mobi.phosh.shell.proximity]\n"
-                "enable-proximity-sensor=false\n")
+                "enable-proximity-sensor=true\n")
+# After a PulseAudio restart audiosystem-passthrough keeps a dead D-Bus connection ("Failed to call set_parameters(): The
+# connection is closed") and calls then have no voice session; restart it together with PulseAudio.
+PASSTHROUGH_DROPIN = "[Unit]\nPartOf=pulseaudio.service\n"
 
 TMPFILES = "w /sys/class/backlight/panel0-backlight/brightness - - - - 1600\n"
 
@@ -471,7 +474,7 @@ def stage_rootfs():
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
                  ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
                  ("qcom,kona-mtp.json", NOTCH_JSON), ("bitra-install-debs", INSTALL_DEBS),
-                 ("bitra-install-debs.service", INSTALL_DEBS_UNIT), ("binder.conf", OFONO_BINDER_CONF), ("gameopt.rc", GAMEOPT_RC), ("90-bitra-pidmax.conf", PIDMAX_CONF), ("init.disabled.rc", INIT_DISABLED_RC)):
+                 ("bitra-install-debs.service", INSTALL_DEBS_UNIT), ("binder.conf", OFONO_BINDER_CONF), ("gameopt.rc", GAMEOPT_RC), ("90-bitra-pidmax.conf", PIDMAX_CONF), ("passthrough-dropin.conf", PASSTHROUGH_DROPIN), ("init.disabled.rc", INIT_DISABLED_RC)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -482,6 +485,8 @@ def stage_rootfs():
     put(tmp / "bitra-modem-online.service", "/etc/systemd/system/bitra-modem-online.service", 0o100644)
     cmds += ["mkdir /etc/systemd/network"]
     put(tmp / "10-bitra-wlan.link", "/etc/systemd/network/10-bitra-wlan.link", 0o100644)
+    cmds += ["mkdir /etc/systemd/user/audiosystem-passthrough.service.d"]
+    put(tmp / "passthrough-dropin.conf", "/etc/systemd/user/audiosystem-passthrough.service.d/10-bitra.conf", 0o100644)
     cmds += ["mkdir /etc/systemd/system/plymouth-quit.service.d"]
     put(tmp / "plymouth-dropin.conf", "/etc/systemd/system/plymouth-quit.service.d/bitra.conf", 0o100644)
     cmds += ["mkdir /etc/systemd/system/android-service@hwcomposer.service.d", "mkdir /etc/systemd/system/phosh.service.d"]
