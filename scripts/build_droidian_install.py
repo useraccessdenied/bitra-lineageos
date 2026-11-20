@@ -310,6 +310,10 @@ NOTCH_JSON = """{
 # Oplus game optimiser HAL: SIGSEGV in FreqControl::releaseCpuAll() right at start, restarted by init every ~10 s
 # (hundreds of crashes per boot). Nothing here uses it; same service block as the stock rc plus `disabled`
 # (the overlay replaces the stock odm rc of the same name).
+# 32-bit Android binaries (crash_dump32 and 32-bit HALs) abort when their pid is > 65535 ("32 bit bionic libc only accepts pid <=
+# 65535"); the container shares the host pid space and systemd raises pid_max to 4194304, so after some uptime every 32-bit HAL
+# (re)start aborts and each aborting crash_dump32 spawns another one: a self-sustaining fork storm (14000 procs, load 6000).
+PIDMAX_CONF = "# bitra: keep pids <= 65535 for the 32-bit Android userspace in the container\nkernel.pid_max = 65535\n"
 GAMEOPT_RC = """service gameopt_hal_service-1-0 /odm/bin/hw/vendor.oplus.hardware.gameopt-service
     class hal
     user system
@@ -467,7 +471,7 @@ def stage_rootfs():
                  ("plymouth-dropin.conf", PLYMOUTH_DROPIN), ("10-bitra-wlan.link", WLAN_LINK),
                  ("hwc-20-phosh.conf", HWC_PHOSH_DROPIN), ("phosh-zz-bitra.conf", PHOSH_RESTART_DROPIN),
                  ("qcom,kona-mtp.json", NOTCH_JSON), ("bitra-install-debs", INSTALL_DEBS),
-                 ("bitra-install-debs.service", INSTALL_DEBS_UNIT), ("binder.conf", OFONO_BINDER_CONF), ("gameopt.rc", GAMEOPT_RC), ("init.disabled.rc", INIT_DISABLED_RC)):
+                 ("bitra-install-debs.service", INSTALL_DEBS_UNIT), ("binder.conf", OFONO_BINDER_CONF), ("gameopt.rc", GAMEOPT_RC), ("90-bitra-pidmax.conf", PIDMAX_CONF), ("init.disabled.rc", INIT_DISABLED_RC)):
         (tmp / n).write_text(t)
     cmds += ["mkdir /usr/lib/droidian/device", "mkdir /etc/systemd/system/bluebinder.service.d"]
     put(tmp / "preferred-hostname", "/usr/lib/droidian/device/preferred-hostname", 0o100644)
@@ -563,6 +567,7 @@ def stage_rootfs():
                      "set_inode_field WCNSS_qcom_cfg.ini uid 0", "set_inode_field WCNSS_qcom_cfg.ini gid 0"])
     for d in ("/usr/lib/droid-odm-overlay", "/usr/lib/droid-odm-overlay/etc", "/usr/lib/droid-odm-overlay/etc/init"):
         cmds.append(f"mkdir {d}")
+    put(tmp / "90-bitra-pidmax.conf", "/etc/sysctl.d/90-bitra-pidmax.conf", 0o100644)
     put(tmp / "gameopt.rc", "/usr/lib/droid-odm-overlay/etc/init/vendor.oplus.hardware.gameopt-service.rc", 0o100644)
     for d in ("/usr/lib/droid-system-overlay", "/usr/lib/droid-system-overlay/etc", "/usr/lib/droid-system-overlay/etc/init"):
         cmds.append(f"mkdir {d}")
