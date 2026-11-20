@@ -705,6 +705,12 @@ def stage_boot():
             assert "\t/dev/disk*)\n" in s, "halium resize_userdata_if_needed layout changed"
             if "/dev/sd*)" not in s:
                 s = s.replace("\t/dev/disk*)\n", sd_case + "\t/dev/disk*)\n", 1)
+            # data=journal (bug 1387214 workaround) makes mount fail with EINVAL on an ext4 without a journal, which
+            # panics the initrd; only use it when the journal feature is really there.
+            jold = '[ `blkid $path -o value -s TYPE` = "ext4" ] && OPTIONS="data=journal,"'
+            jnew = '[ `blkid $path -o value -s TYPE` = "ext4" ] && dumpe2fs -h $path 2>/dev/null | grep -q has_journal && OPTIONS="data=journal,"'
+            assert jold in s, "halium data=journal line changed"
+            s = s.replace(jold, jnew, 1)
             e[2] = s.encode(); hit = True
     if not hit:
         sys.exit("scripts/halium not found in initramfs")

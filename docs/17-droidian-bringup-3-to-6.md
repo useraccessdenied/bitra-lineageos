@@ -72,3 +72,15 @@ Latest image: `releases/droidian-install/userdata.img` (see SHA256SUMS; not trac
 - Power question (measured with a `pr_info` in `bluetooth_power()`): the HAL powers the chip on (`on=1`) and then into retention (`on=2`) at init and never calls `on=0` on close, so blocking only `hci0` leaves the chip in retention; the old rfkill path was the only caller of the full power-off (`on=0`). Likely small saving (Wi-Fi shares the QCA6390 rails vdd-aon/rfa1/rfa2), not measured. Decision (user): keep reliability, make the rfkill handler a no-op (state tracking only). If standby drain with Bluetooth off ever matters: power the chip off after hci0 closed and back on before the next open.
 - The driver now also logs every `bluetooth_power()` request with the caller (`bluetooth_power: request on=N by comm[pid]`).
 - Verified (RAM boot, kernel #8): 3 Settings off/on cycles incl. 2-3 s gaps, each back on within ~1 s, no HAL kill.
+
+## Flash gotcha: userdata flashed over a populated partition (2026-11-21)
+Symptom: after flashing boot-gz + userdata the phone stuck at the realme logo in the initrd panic shell
+(telnet on 192.168.2.15). dmesg: `EXT4-fs (sda11): Mount option "data=journal" incompatible with ext2 / can't mount with
+data=, fs mounted w/o journal`, then every later initrd mount failed (EINVAL).
+Cause: `fastboot flash` of the *sparse* userdata.img skips DONT_CARE (all-zero) chunks, so the old install's filesystem
+structures survived under the new image (6185 files instead of 13, old `#NNN` dirs in lost+found, grown block count).
+The initrd's `e2fsck -y` repaired the hybrid and dropped the journal; halium's initrd then mounts with `-o data=journal`.
+(Reproduced the first-boot e2fsck + resize2fs on the shipped image with the initrd's own aarch64 binaries under
+qemu-user: they keep the journal, so the image itself is fine.)
+Fix: (1) erase userdata before flashing (`fastboot erase userdata`, then `fastboot flash userdata userdata.img`);
+(2) initrd patch (build_droidian_install.py): only add `data=journal` when `dumpe2fs -h` shows has_journal.
