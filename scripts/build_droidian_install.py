@@ -390,7 +390,8 @@ ALS_OVERRIDE = ("[org.gnome.settings-daemon.plugins.power]\n"
 # connection is closed") and calls then have no voice session; restart it together with PulseAudio.
 PASSTHROUGH_DROPIN = "[Unit]\nPartOf=pulseaudio.service\n"
 
-TMPFILES = "w /sys/class/backlight/panel0-backlight/brightness - - - - 1600\n"
+# sysfs range is 0..255 now (kernel scales it to the panel, see the sde_connector.c bitra_bl_map patch)
+TMPFILES = "w /sys/class/backlight/panel0-backlight/brightness - - - - 200\n"
 
 ODM_OVERLAY_BLOCK = """
 # bitra: overlay with sanitized VINTF manifests (Android-11 libvintf cannot parse the stock Android-13 AIDL entries).
